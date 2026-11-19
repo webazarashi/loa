@@ -1,0 +1,44 @@
+[workspace]
+resolver = "3"
+members = ["crates/loa-core", "crates/loa-ui", "crates/loa-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+rust-version = "1.88"
+description = "Unofficial CLI that automates LINE Developers Console and LINE Official Account setup"
+
+[workspace.dependencies]
+loa-core = { path = "crates/loa-core" }
+loa-ui = { path = "crates/loa-ui" }
+clap = { version = "4.6", features = ["derive", "env"] }
+dirs = "6"
+eframe = "0.37"
+fd-lock = "4"
+flate2 = "1"
+hex = "0.4"
+hmac = "0.12"
+include_dir = "0.7"
+keyring-core = "1"
+minisign-verify = "0.3"
+getrandom = "0.3"
+regex = "1"
+schemars = "1.2"
+semver = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde-saphyr = "2"
+sha2 = "0.10"
+tar = "0.4"
+thiserror = "2"
+time = { version = "0.3", features = ["formatting", "macros", "serde"] }
+toml = "0.9"
+ureq = { version = "3", features = ["json"] }
+url = "2"
+zeroize = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

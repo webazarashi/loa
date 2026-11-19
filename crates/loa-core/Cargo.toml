@@ -1,0 +1,42 @@
+[package]
+name = "loa-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[features]
+# Test-only switches (fake console, API base override, auto approval, file secret store).
+# Refused at compile time outside debug builds.
+test-hooks = []
+
+[dependencies]
+dirs.workspace = true
+fd-lock.workspace = true
+flate2.workspace = true
+getrandom.workspace = true
+hex.workspace = true
+hmac.workspace = true
+include_dir.workspace = true
+keyring-core.workspace = true
+minisign-verify.workspace = true
+regex.workspace = true
+schemars.workspace = true
+semver.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde-saphyr.workspace = true
+sha2.workspace = true
+tar.workspace = true
+thiserror.workspace = true
+time.workspace = true
+toml.workspace = true
+ureq.workspace = true
+url.workspace = true
+zeroize.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { version = "1", features = ["keychain"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-native-keyring-store = "1"
