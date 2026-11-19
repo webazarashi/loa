@@ -1,0 +1,18 @@
+id: channel.delete
+version: 1
+min_loa_version: "0.1.0"
+operation: channel.delete
+status: provisional
+description: 承認済みのチャネルを削除する。押す前に画面上のチャネルIDを照合する
+inputs:
+  channel_id: { type: string, required: true }
+  name: { type: string, required: true }
+steps:
+  - goto: "https://developers.line.biz/console/channel/{{channel_id}}/basics"
+  - require_login: true
+  - confirm_target: { label: "チャネルID", equals: "{{channel_id}}" }
+  - confirm_target: { label: "チャネル名", equals: "{{name}}" }
+  - click: { role: button, name: "削除" }
+  - wait_for: { role: dialog }
+  - click: { role: button, name: "削除", within: { role: dialog } }
+  - wait_url: "**/console/provider/**"

@@ -1,0 +1,17 @@
+id: oa.update.members.remove
+version: 1
+min_loa_version: "0.1.0"
+operation: oa.update.members
+status: provisional
+inputs:
+  oa_id: { type: string, required: true }
+  member: { type: string, required: true }
+steps:
+  - goto: "https://manager.line.biz/account/{{oa_id}}/setting/user"
+  - require_login: true
+  - confirm_target: { css: "header", pattern: "(@[A-Za-z0-9._-]+)", equals: "{{oa_id}}" }
+  - assert: { exists: { role: row, name: "{{member}}" } }
+  - click: { role: button, name: "削除", within: { role: row, name: "{{member}}" } }
+  - wait_for: { role: dialog }
+  - click: { role: button, name: "削除", within: { role: dialog } }
+  - assert: { not_exists: { role: row, name: "{{member}}" } }

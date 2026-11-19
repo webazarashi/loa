@@ -1,0 +1,24 @@
+id: miniapp.get
+version: 1
+min_loa_version: "0.1.0"
+operation: miniapp.get
+status: provisional
+description: ウェブアプリ設定から内部チャネル（開発用・審査用・本番用）のLIFF IDとエンドポイントURLを読む
+inputs:
+  channel_id: { type: string, required: true }
+outputs:
+  developing_liff_id: { type: string }
+  developing_endpoint: { type: string }
+  review_liff_id: { type: string }
+  review_endpoint: { type: string }
+  published_liff_id: { type: string }
+  published_endpoint: { type: string }
+steps:
+  - goto: "https://developers.line.biz/console/channel/{{channel_id}}/web-app"
+  - require_login: true
+  - read: { label: "LIFF ID", within: { role: region, name: "開発用" }, pattern: "(\\d+-\\w+)", into: developing_liff_id, optional: true }
+  - read: { label: "エンドポイントURL", within: { role: region, name: "開発用" }, into: developing_endpoint, optional: true }
+  - read: { label: "LIFF ID", within: { role: region, name: "審査用" }, pattern: "(\\d+-\\w+)", into: review_liff_id, optional: true }
+  - read: { label: "エンドポイントURL", within: { role: region, name: "審査用" }, into: review_endpoint, optional: true }
+  - read: { label: "LIFF ID", within: { role: region, name: "本番用" }, pattern: "(\\d+-\\w+)", into: published_liff_id, optional: true }
+  - read: { label: "エンドポイントURL", within: { role: region, name: "本番用" }, into: published_endpoint, optional: true }

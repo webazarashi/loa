@@ -1,6 +1,10 @@
 //! loa-core: scenario engine, agent-browser driver, LINE API client, keychain,
 //! approval policy and diffing for the `loa` CLI.
 
+// `LoaError` carries hint/next/report for the user; errors end a command, so their size
+// does not matter for speed.
+#![allow(clippy::result_large_err)]
+
 #[cfg(all(feature = "test-hooks", not(debug_assertions)))]
 compile_error!("feature `test-hooks` is for debug test builds only");
 

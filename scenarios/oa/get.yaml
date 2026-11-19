@@ -1,0 +1,15 @@
+id: oa.get
+version: 1
+min_loa_version: "0.1.0"
+operation: oa.get
+status: provisional
+inputs:
+  oa_id: { type: string, required: true }
+outputs:
+  basic_id: { type: string }
+  status_message: { type: string }
+steps:
+  - goto: "https://manager.line.biz/account/{{oa_id}}/setting"
+  - require_login: true
+  - read: { label: "ベーシックID", pattern: "(@[A-Za-z0-9._-]+)", into: basic_id, optional: true }
+  - read: { label: "ステータスメッセージ", into: status_message, optional: true }

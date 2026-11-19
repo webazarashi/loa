@@ -1,0 +1,20 @@
+id: oa.update.members.invite
+version: 1
+min_loa_version: "0.1.0"
+operation: oa.update.members
+status: provisional
+description: 指定した権限の招待URLを発行する（LINE Official Account Managerのメンバー追加は招待URL方式）
+inputs:
+  oa_id: { type: string, required: true }
+  role_label: { type: string, required: true }
+outputs:
+  invite_url: { type: string }
+steps:
+  - goto: "https://manager.line.biz/account/{{oa_id}}/setting/user"
+  - require_login: true
+  - confirm_target: { css: "header", pattern: "(@[A-Za-z0-9._-]+)", equals: "{{oa_id}}" }
+  - click: { role: button, name: "メンバーを追加" }
+  - wait_for: { role: dialog }
+  - click: { role: radio, name: "{{role_label}}", within: { role: dialog } }
+  - click: { role: button, name: "URLを発行", within: { role: dialog } }
+  - read: { role: textbox, name: "招待URL", attr: value, pattern: "(https://\\S+)", into: invite_url }

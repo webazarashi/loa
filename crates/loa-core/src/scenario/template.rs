@@ -46,7 +46,8 @@ pub fn encode_component(s: &str) -> String {
     let mut out = String::new();
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+            // `@` is a valid path character (official account IDs: /account/@abc1234)
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'@' => {
                 out.push(b as char)
             }
             _ => out.push_str(&format!("%{b:02X}")),
@@ -77,6 +78,17 @@ mod tests {
         assert_eq!(
             render_url("https://h/p/{{name}}", &vars()).unwrap(),
             "https://h/p/a%20b%2F..%2Fc"
+        );
+    }
+
+    #[test]
+    fn keeps_at_sign_in_paths() {
+        let v: Vars = [("oa".to_string(), "@abc1234".to_string())]
+            .into_iter()
+            .collect();
+        assert_eq!(
+            render_url("https://manager.line.biz/account/{{oa}}/setting", &v).unwrap(),
+            "https://manager.line.biz/account/@abc1234/setting"
         );
     }
 

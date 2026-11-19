@@ -1,0 +1,10 @@
+id: session.login
+version: 1
+min_loa_version: "0.1.0"
+operation: session.login
+status: provisional
+description: LINE Developersコンソールを開き、未ログインなら人のログインを待つ
+steps:
+  - goto: "https://developers.line.biz/console/"
+  - require_login: true
+  - wait_url: "**/console/**"

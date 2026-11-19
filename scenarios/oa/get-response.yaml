@@ -1,0 +1,18 @@
+id: oa.get.response
+version: 1
+min_loa_version: "0.1.0"
+operation: oa.get
+status: provisional
+description: 応答設定（チャット・Webhook・応答メッセージ）の現在値を読む
+inputs:
+  oa_id: { type: string, required: true }
+outputs:
+  chat: { type: string }
+  webhook: { type: string }
+  auto_reply: { type: string }
+steps:
+  - goto: "https://manager.line.biz/account/{{oa_id}}/setting/response"
+  - require_login: true
+  - read: { role: switch, name: "チャット", attr: aria-checked, into: chat, optional: true }
+  - read: { role: switch, name: "Webhook", attr: aria-checked, into: webhook, optional: true }
+  - read: { role: switch, name: "応答メッセージ", attr: aria-checked, into: auto_reply, optional: true }

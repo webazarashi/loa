@@ -1,0 +1,14 @@
+id: channel.list
+version: 1
+min_loa_version: "0.1.0"
+operation: channel.list
+status: provisional
+inputs:
+  provider_id: { type: string, required: true }
+outputs:
+  channels: { type: list }
+steps:
+  - goto: "https://developers.line.biz/console/provider/{{provider_id}}"
+  - require_login: true
+  - wait_text: "チャネル"
+  - read_list: { link_pattern: "/console/channel/(?<id>\\d+)", into: channels }

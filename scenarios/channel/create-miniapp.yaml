@@ -1,0 +1,39 @@
+id: channel.create.miniapp
+version: 1
+min_loa_version: "0.1.0"
+operation: channel.create
+status: provisional
+inputs:
+  provider_id: { type: string, required: true }
+  name: { type: string, required: true }
+  description: { type: string, required: true }
+  email: { type: string, default: "" }
+outputs:
+  channel_id: { type: string }
+  channel_secret: { type: secret }
+steps:
+  - goto: "https://developers.line.biz/console/channel/new?type=line-mini-app&provider={{provider_id}}"
+  - require_login: true
+  - wait_for: { label: "チャネル名" }
+  - fill: { label: "チャネル名", value: "{{name}}" }
+  - fill: { label: "チャネル説明", value: "{{description}}" }
+  - if_exists:
+      label: "メールアドレス"
+      then:
+        - fill: { label: "メールアドレス", value: "{{email}}" }
+  - agree_terms:
+      terms_id: "line-developers-agreement"
+      title: "LINE開発者契約"
+      label: "LINE開発者契約の内容に同意します"
+      link: "https://terms2.line.me/LINE_Developers_Agreement?lang=ja"
+  - agree_terms:
+      terms_id: "line-mini-app-policy"
+      title: "LINEミニアプリ ポリシー"
+      label: "LINEミニアプリ ポリシーに同意します"
+      link: "https://terms2.line.me/LINE_MINI_App?lang=ja"
+  - click: { role: button, name: "作成" }
+  - wait_url: "**/console/channel/*/basics"
+  - read_url: { pattern: "/console/channel/(?<id>\\d+)/", into: channel_id }
+  - read_secret: { label: "チャネルシークレット", pattern: "([0-9a-f]{32})", into: channel_secret }
+verify:
+  - text_contains: "{{name}}"

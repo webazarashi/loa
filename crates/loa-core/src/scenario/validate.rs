@@ -48,7 +48,7 @@ pub fn validate(s: &Scenario, expected: OpKind) -> Result<()> {
     for c in &s.verify {
         ctx.check(c)?;
     }
-    for (name, _) in s.outputs.iter() {
+    for name in s.outputs.keys() {
         if !ctx.written.contains(name) {
             return fail(format!("出力 {name} に値を書くステップがありません"));
         }
@@ -184,6 +184,7 @@ impl Ctx<'_> {
             Step::Check(c) => {
                 self.read_only_forbids("check")?;
                 self.locator(&c.target)?;
+                self.vars(&c.checked)?;
             }
             Step::Upload(u) => {
                 self.read_only_forbids("upload")?;
@@ -236,6 +237,14 @@ impl Ctx<'_> {
                 self.output(&p.into, true)?;
             }
             Step::LockedIfExists(l) => self.locator(l)?,
+            Step::IfSet(i) => {
+                if !self.known.contains(&i.var) {
+                    return Err(self.err(format!("if_set の変数 {} が未定義です", i.var)));
+                }
+                for s in i.then.iter().chain(i.otherwise.iter()) {
+                    self.step(s)?;
+                }
+            }
         }
         Ok(())
     }

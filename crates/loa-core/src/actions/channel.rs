@@ -53,11 +53,11 @@ fn parse_type(s: &str) -> Result<ChannelType> {
     }
 }
 
+/// (provider name, provider id, [(channel name, channel id)])
+pub type Listing = (String, String, Vec<(String, String)>);
+
 /// Channels of a provider from the console; refreshes the local map.
-pub fn fetch(
-    ctx: &mut Ctx<'_>,
-    provider_key: &str,
-) -> Result<(String, String, Vec<(String, String)>)> {
+pub fn fetch(ctx: &mut Ctx<'_>, provider_key: &str) -> Result<Listing> {
     let (pname, pid) = provider::resolve_id(ctx, provider_key)?;
     let out = ctx.scenario(
         "channel.list",
@@ -381,14 +381,13 @@ pub fn update(ctx: &mut Ctx<'_>, a: &UpdateArgs) -> Result<Envelope> {
             p.channels.insert(n.clone(), rec);
         }
         ctx.save_resources(&res)?;
-        // move stored secrets to the new name
-        for key in ["channel_secret"] {
-            let old = SecretRef::new(&hit.provider, &hit.name, key);
-            if let Some(v) = ctx.secrets.get(&old.store_key())? {
-                ctx.secrets
-                    .set(&SecretRef::new(&hit.provider, n, key).store_key(), &v)?;
-                ctx.secrets.delete(&old.store_key())?;
-            }
+        // move the stored secret to the new name
+        let key = "channel_secret";
+        let old = SecretRef::new(&hit.provider, &hit.name, key);
+        if let Some(v) = ctx.secrets.get(&old.store_key())? {
+            ctx.secrets
+                .set(&SecretRef::new(&hit.provider, n, key).store_key(), &v)?;
+            ctx.secrets.delete(&old.store_key())?;
         }
     }
     Ok(Envelope::new(
@@ -428,10 +427,8 @@ pub fn remove(ctx: &mut Ctx<'_>, key: &str, provider: Option<&str>) -> Result<En
     res.business(&ctx.business_id)
         .remove_channel(&hit.provider, &hit.name);
     ctx.save_resources(&res)?;
-    for k in ["channel_secret"] {
-        ctx.secrets
-            .delete(&SecretRef::new(&hit.provider, &hit.name, k).store_key())?;
-    }
+    ctx.secrets
+        .delete(&SecretRef::new(&hit.provider, &hit.name, "channel_secret").store_key())?;
     Ok(Envelope::new(
         "channel",
         "deleted",

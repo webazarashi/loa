@@ -1,0 +1,39 @@
+id: oa.update.profile
+version: 1
+min_loa_version: "0.1.0"
+operation: oa.update.profile
+status: provisional
+description: アカウント名・ステータスメッセージ・アイコン・背景画像のうち指定された項目を変更する
+inputs:
+  oa_id: { type: string, required: true }
+  name: { type: string, default: "" }
+  status_message: { type: string, default: "" }
+  icon: { type: file, default: "" }
+  background: { type: file, default: "" }
+steps:
+  - goto: "https://manager.line.biz/account/{{oa_id}}/setting"
+  - require_login: true
+  - if_set:
+      var: name
+      then:
+        - click: { role: button, name: "編集", within: { role: group, name: "アカウント名" } }
+        - fill: { label: "アカウント名", value: "{{name}}" }
+        - click: { role: button, name: "保存", within: { role: group, name: "アカウント名" } }
+  - if_set:
+      var: status_message
+      then:
+        - click: { role: button, name: "編集", within: { role: group, name: "ステータスメッセージ" } }
+        - fill: { label: "ステータスメッセージ", value: "{{status_message}}" }
+        - click: { role: button, name: "保存", within: { role: group, name: "ステータスメッセージ" } }
+  - if_set:
+      var: icon
+      then:
+        - click: { role: button, name: "編集", within: { role: group, name: "プロフィール画像" } }
+        - upload: { css: "[aria-label='プロフィール画像'] input[type=file]", file: "{{icon}}" }
+        - click: { role: button, name: "保存" }
+  - if_set:
+      var: background
+      then:
+        - goto: "https://manager.line.biz/account/{{oa_id}}/profile"
+        - upload: { css: "[aria-label='背景画像'] input[type=file]", file: "{{background}}" }
+        - click: { role: button, name: "保存" }

@@ -1,0 +1,18 @@
+id: miniapp.update.review
+version: 1
+min_loa_version: "0.1.0"
+operation: miniapp.update
+status: provisional
+description: 審査用の内部チャネルのエンドポイントURLを変える（審査中・公開済みなら LOCKED_BY_REVIEW）
+inputs:
+  channel_id: { type: string, required: true }
+  endpoint_url: { type: url, required: true }
+steps:
+  - goto: "https://developers.line.biz/console/channel/{{channel_id}}/web-app"
+  - require_login: true
+  - locked_if_exists: { text: "審査中のため変更できません", within: { role: region, name: "審査用" } }
+  - click: { role: button, name: "編集", within: { role: region, name: "審査用" } }
+  - fill: { label: "エンドポイントURL", within: { role: region, name: "審査用" }, value: "{{endpoint_url}}" }
+  - click: { role: button, name: "更新", within: { role: region, name: "審査用" } }
+verify:
+  - text_contains: "{{endpoint_url}}"

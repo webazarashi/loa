@@ -1,0 +1,35 @@
+id: channel.update.basic
+version: 1
+min_loa_version: "0.1.0"
+operation: channel.update
+status: provisional
+description: チャネル名・説明・メールアドレスのうち、指定された項目だけを変更する
+inputs:
+  channel_id: { type: string, required: true }
+  name: { type: string, default: "" }
+  description: { type: string, default: "" }
+  email: { type: string, default: "" }
+steps:
+  - goto: "https://developers.line.biz/console/channel/{{channel_id}}/basics"
+  - require_login: true
+  - assert: { text_contains: "{{channel_id}}" }
+  - if_set:
+      var: name
+      then:
+        - click: { role: button, name: "編集", within: { role: group, name: "チャネル名" } }
+        - fill: { label: "チャネル名", value: "{{name}}" }
+        - click: { role: button, name: "更新", within: { role: group, name: "チャネル名" } }
+        - wait_text: "{{name}}"
+  - if_set:
+      var: description
+      then:
+        - click: { role: button, name: "編集", within: { role: group, name: "チャネル説明" } }
+        - fill: { label: "チャネル説明", value: "{{description}}" }
+        - click: { role: button, name: "更新", within: { role: group, name: "チャネル説明" } }
+        - wait_text: "{{description}}"
+  - if_set:
+      var: email
+      then:
+        - click: { role: button, name: "編集", within: { role: group, name: "メールアドレス" } }
+        - fill: { label: "メールアドレス", value: "{{email}}" }
+        - click: { role: button, name: "更新", within: { role: group, name: "メールアドレス" } }

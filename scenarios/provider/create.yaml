@@ -1,0 +1,20 @@
+id: provider.create
+version: 1
+min_loa_version: "0.1.0"
+operation: provider.create
+status: provisional
+inputs:
+  name: { type: string, required: true }
+outputs:
+  provider_id: { type: string }
+steps:
+  - goto: "https://developers.line.biz/console/"
+  - require_login: true
+  - click: { role: button, name: "作成" }
+  - wait_for: { label: "プロバイダー名" }
+  - fill: { label: "プロバイダー名", value: "{{name}}" }
+  - click: { role: button, name: "作成", within: { role: dialog } }
+  - wait_url: "**/console/provider/*"
+  - read_url: { pattern: "/console/provider/(?<id>\\d+)", into: provider_id }
+verify:
+  - text_contains: "{{name}}"

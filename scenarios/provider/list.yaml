@@ -1,0 +1,13 @@
+id: provider.list
+version: 1
+min_loa_version: "0.1.0"
+operation: provider.list
+status: provisional
+description: コンソールのトップからプロバイダーの一覧を読む
+outputs:
+  providers: { type: list }
+steps:
+  - goto: "https://developers.line.biz/console/"
+  - require_login: true
+  - wait_text: "プロバイダー"
+  - read_list: { link_pattern: "/console/provider/(?<id>\\d+)/?$", into: providers }

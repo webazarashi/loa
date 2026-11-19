@@ -152,7 +152,7 @@ impl<'a> Runner<'a> {
     fn step(&mut self, step: &Step) -> Result<()> {
         match step {
             Step::Goto(u) => {
-                let url = render_url(u, &self.vars)?;
+                let url = crate::domains::test_rewrite(&render_url(u, &self.vars)?);
                 self.allow.check(&url)?;
                 self.exec(vec!["open".into(), url.clone()])?;
                 self.last_goto = Some(url);
@@ -217,7 +217,13 @@ impl<'a> Runner<'a> {
             }
             Step::Check(c) => {
                 let l = self.render_locator(&c.target)?;
-                if c.checked {
+                let want = render(&c.checked, &self.vars)?;
+                let on = match want.as_str() {
+                    "true" | "on" | "yes" => true,
+                    "false" | "off" | "no" => false,
+                    other => return Err(LoaError::other(format!("check の値が不正です: {other}"))),
+                };
+                if on {
                     self.act(&l, "check", None)?;
                 } else {
                     let sel = self.selector(&l)?;
@@ -276,11 +282,18 @@ impl<'a> Runner<'a> {
             Step::AgreeTerms(t) => self.agree_terms(t)?,
             Step::IfExists(i) => {
                 let l = self.render_locator(&i.target)?;
-                let branch = if self.exists(&l)? {
-                    &i.then
-                } else {
-                    &i.otherwise
+                let deadline =
+                    Instant::now() + Duration::from_millis(i.wait_ms.unwrap_or(0).min(30_000));
+                let found = loop {
+                    if self.exists(&l)? {
+                        break true;
+                    }
+                    if Instant::now() >= deadline {
+                        break false;
+                    }
+                    std::thread::sleep(Duration::from_millis(300));
                 };
+                let branch = if found { &i.then } else { &i.otherwise };
                 for s in branch {
                     self.step(s)?;
                 }
@@ -319,6 +332,13 @@ impl<'a> Runner<'a> {
                 })?;
                 crate::redact::register_secret(&v);
                 self.out.secrets.insert(p.into.clone(), v);
+            }
+            Step::IfSet(i) => {
+                let set = self.vars.get(&i.var).is_some_and(|v| !v.trim().is_empty());
+                let branch = if set { &i.then } else { &i.otherwise };
+                for s in branch {
+                    self.step(s)?;
+                }
             }
             Step::LockedIfExists(l) => {
                 let l = self.render_locator(l)?;
@@ -377,7 +397,7 @@ impl<'a> Runner<'a> {
                     optional: false,
                 })?
             }
-            None => format!("{}\n{}", t.name, link.clone().unwrap_or_default()),
+            None => format!("{}\n{}", t.title, link.clone().unwrap_or_default()),
         };
         let hash = hash_text(&text);
         if !self.terms.is_approved(&t.terms_id, &hash)? {
@@ -389,13 +409,13 @@ impl<'a> Runner<'a> {
             let req = ApprovalRequest {
                 kind: ApprovalKind::Terms,
                 title: if previously {
-                    format!("「{}」の内容が変わりました。同意しますか？", t.name)
+                    format!("「{}」の内容が変わりました。同意しますか？", t.title)
                 } else {
-                    format!("「{}」に同意しますか？", t.name)
+                    format!("「{}」に同意しますか？", t.title)
                 },
                 operation: self.op.as_str().to_string(),
                 target: vec![
-                    ("規約".into(), t.name.clone()),
+                    ("規約".into(), t.title.clone()),
                     ("内容のハッシュ".into(), hash[..12].to_string()),
                 ],
                 changes: Vec::new(),
@@ -405,10 +425,10 @@ impl<'a> Runner<'a> {
             if !self.gate.approve(&req)? {
                 return Err(LoaError::new(
                     Code::ApprovalDenied,
-                    format!("「{}」への同意が拒否されました", t.name),
+                    format!("「{}」への同意が拒否されました", t.title),
                 ));
             }
-            self.terms.record(&t.terms_id, &t.name, &hash, link)?;
+            self.terms.record(&t.terms_id, &t.title, &hash, link)?;
         }
         if t.click {
             self.act(&target, "click", None)
@@ -601,6 +621,13 @@ impl<'a> Runner<'a> {
     }
 
     fn exists(&mut self, l: &Locator) -> Result<bool> {
+        if let (Some(text), Some(w)) = (&l.text, &l.within)
+            && l.role.is_none()
+        {
+            let scope = w.name.clone().or(w.label.clone());
+            let js = text_in_scope_js(text, scope.as_deref());
+            return Ok(self.eval(&js)?.as_bool().unwrap_or(false));
+        }
         match self.target(l) {
             Target::Find { kind, value, name } => {
                 let mut c: Cmd = vec!["find".into(), kind, value, "text".into()];
@@ -630,8 +657,16 @@ impl<'a> Runner<'a> {
     fn read(&mut self, r: &ReadStep) -> Result<String> {
         let l = self.render_locator(&r.target)?;
         let attr = r.attr.as_deref().unwrap_or("text");
-        let raw = if l.label.is_some() && l.within.is_none() && l.role.is_none() && attr == "text" {
-            self.read_by_label(l.label.as_deref().unwrap_or(""), r.optional)?
+        let raw = if l.label.is_some() && l.role.is_none() && attr == "text" {
+            let scope = l
+                .within
+                .as_ref()
+                .and_then(|w| w.name.clone().or(w.label.clone()));
+            self.read_by_label(
+                l.label.as_deref().unwrap_or(""),
+                scope.as_deref(),
+                r.optional,
+            )?
         } else {
             let sel = match self.selector(&l) {
                 Ok(s) => s,
@@ -668,8 +703,13 @@ impl<'a> Runner<'a> {
         }
     }
 
-    fn read_by_label(&mut self, label: &str, optional: bool) -> Result<String> {
-        let js = label_js(label);
+    fn read_by_label(
+        &mut self,
+        label: &str,
+        scope: Option<&str>,
+        optional: bool,
+    ) -> Result<String> {
+        let js = label_js(label, scope);
         let deadline = Instant::now() + self.wait_timeout;
         loop {
             let v = self.eval(&js)?;
@@ -826,13 +866,51 @@ fn css_str(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
+/// Fixed script: element named `scope` (aria-label, aria-labelledby or a heading's container).
+fn scope_js(scope: Option<&str>) -> String {
+    let n = match scope {
+        Some(s) => serde_json::to_string(s).unwrap_or_else(|_| "null".into()),
+        None => "null".into(),
+    };
+    format!(
+        r#"const findScope = (N) => {{
+    if (N === null) return document.body;
+    const one = a => a.length === 1 ? a[0] : null;
+    const byLabel = one([...document.querySelectorAll('[aria-label]')].filter(e => norm(e.getAttribute('aria-label')) === N));
+    if (byLabel) return byLabel;
+    const byRef = one([...document.querySelectorAll('[aria-labelledby]')].filter(e => norm(e.getAttribute('aria-labelledby').split(/\s+/).map(i => (document.getElementById(i) || {{}}).innerText || '').join(' ')) === N));
+    if (byRef) return byRef;
+    const head = one([...document.querySelectorAll('h1,h2,h3,h4,h5,h6,legend,[role=heading]')].filter(h => norm(h.innerText) === N));
+    if (head) return head.closest('section,fieldset,article,[role=region],[role=group]') || head.parentElement;
+    return null;
+  }};
+  const SCOPE = findScope({n});"#
+    )
+}
+
+/// Fixed script: is `text` visible inside the scope?
+fn text_in_scope_js(text: &str, scope: Option<&str>) -> String {
+    let t = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".into());
+    format!(
+        r#"(() => {{
+  const norm = s => (s || '').replace(/\s+/g, ' ').trim();
+  {}
+  return !!SCOPE && norm(SCOPE.innerText).includes(norm({t}));
+}})()"#,
+        scope_js(scope)
+    )
+}
+
 /// Fixed script: value displayed next to a label (label[for], dl/dt/dd, tables, label/value divs).
-fn label_js(label: &str) -> String {
+fn label_js(label: &str, scope: Option<&str>) -> String {
     let l = serde_json::to_string(label).unwrap_or_else(|_| "\"\"".into());
+    let sc = scope_js(scope);
     format!(
         r#"(() => {{
   const L = {l};
   const norm = s => (s || '').replace(/\s+/g, ' ').trim();
+  {sc}
+  if (!SCOPE) return {{ count: 0, value: null }};
   const own = e => norm([...e.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join(' '));
   const valueOf = el => {{
     if (!el) return null;
@@ -843,7 +921,8 @@ fn label_js(label: &str) -> String {
     const inp = el.querySelector && el.querySelector('input,textarea,select');
     return inp ? inp.value : null;
   }};
-  const cands = [...document.querySelectorAll('body *')].filter(e => (own(e) === L || norm(e.innerText) === L) && ![...e.children].some(c => norm(c.innerText) === L));
+  const visible = e => !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length) && getComputedStyle(e).visibility !== 'hidden';
+  const cands = [...SCOPE.querySelectorAll('*')].filter(e => visible(e) && (own(e) === L || norm(e.innerText) === L) && ![...e.children].some(c => norm(c.innerText) === L));
   const results = [];
   for (const c of cands) {{
     if (c.tagName === 'LABEL' && c.htmlFor) {{
@@ -901,6 +980,8 @@ pub fn outputs_to_json(o: &Outputs) -> Value {
 }
 
 #[cfg(test)]
+// The runner tests use real LINE URLs, which test-hooks builds refuse by design.
+#[cfg_attr(feature = "test-hooks", allow(unused_imports, dead_code))]
 mod tests {
     use super::*;
     use crate::browser::FakeBrowser;
@@ -1002,7 +1083,7 @@ mod tests {
     fn terms_denied_stops() {
         let sc = scenario(
             "channel.create",
-            "steps:\n  - agree_terms: { terms_id: \"x\", name: \"規約\", label: \"同意する\" }\n",
+            "steps:\n  - agree_terms: { terms_id: \"x\", title: \"規約\", label: \"同意する\" }\n",
         );
         let mut b = FakeBrowser {
             current_url: "https://developers.line.biz/console/".into(),

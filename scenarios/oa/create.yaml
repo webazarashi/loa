@@ -1,0 +1,48 @@
+id: oa.create
+version: 1
+min_loa_version: "0.1.0"
+operation: oa.create
+status: provisional
+description: 公式アカウントを開設する。SMS認証などが出たら人の操作を待つ
+inputs:
+  name: { type: string, required: true }
+  category: { type: string, default: "" }
+  subcategory: { type: string, default: "" }
+  company: { type: string, default: "" }
+outputs:
+  oa_id: { type: string }
+steps:
+  - goto: "https://entry.line.biz/form/entry/unverified"
+  - require_login: true
+  - if_exists:
+      text: "認証番号"
+      then:
+        - human:
+            message: "ブラウザでSMS認証を完了してください"
+            until: { exists: { label: "アカウント名" } }
+  - wait_for: { label: "アカウント名" }
+  - fill: { label: "アカウント名", value: "{{name}}" }
+  - if_set:
+      var: company
+      then:
+        - fill: { label: "会社・事業者名", value: "{{company}}" }
+  - if_set:
+      var: category
+      then:
+        - select: { label: "大業種", value: "{{category}}" }
+  - if_set:
+      var: subcategory
+      then:
+        - select: { label: "小業種", value: "{{subcategory}}" }
+  - human:
+      message: "入力内容を確認し、残りの必須項目（運用目的など）があれば入力して「確認」を押してください"
+      until: { exists: { role: button, name: "完了" } }
+  - agree_terms:
+      terms_id: "line-official-account-terms"
+      title: "LINE公式アカウント利用規約"
+      role: button
+      name: "完了"
+      click: true
+      link: "https://terms2.line.me/official_account_terms_jp?lang=ja"
+  - wait_text: "@"
+  - read: { label: "ベーシックID", pattern: "(@[A-Za-z0-9._-]+)", into: oa_id }

@@ -1,6 +1,9 @@
 //! `loa` — entry point. Commands that may need a browser or a person run as tasks in a
 //! detached worker; local commands (setup, env, exec, schema, scenarios, terms) run here.
 
+// See loa-core: errors end a command, so the size of `LoaError` does not matter.
+#![allow(clippy::result_large_err)]
+
 mod cli;
 mod schema;
 

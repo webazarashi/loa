@@ -3,9 +3,9 @@ version: 1
 min_loa_version: "0.1.0"
 operation: session.whoami
 status: provisional
-description: ログイン状態を確認する
+description: コンソールを開き、ログイン画面に飛ばされるかで状態を判断する（人を待たない）
 outputs:
   url: { type: string }
 steps:
   - goto: "https://developers.line.biz/console/"
-  - read_url: { pattern: "^(https://[^?#]*)", into: url }
+  - read_url: { pattern: "^([^?#]*)", into: url }

@@ -1,0 +1,18 @@
+id: oa.update.settings
+version: 1
+min_loa_version: "0.1.0"
+operation: oa.update.settings
+status: provisional
+inputs:
+  oa_id: { type: string, required: true }
+  join_groups: { type: string, required: true }
+steps:
+  - goto: "https://manager.line.biz/account/{{oa_id}}/setting"
+  - require_login: true
+  - check: { role: switch, name: "グループ・複数人トークへの参加を許可する", checked: "{{join_groups}}" }
+  - if_exists:
+      role: button
+      name: "保存"
+      within: { role: group, name: "機能の利用" }
+      then:
+        - click: { role: button, name: "保存", within: { role: group, name: "機能の利用" } }

@@ -246,14 +246,13 @@ impl LineApi {
         let v = self
             .check("LIFFアプリ一覧の取得", &mut resp)?
             .unwrap_or(Value::Null);
-        Ok(
-            serde_json::from_value(v.get("apps").cloned().unwrap_or(Value::Array(vec![])))
-                .map_err(|e| {
-                    LoaError::new(
-                        Code::ApiError,
-                        format!("LIFFアプリ一覧を解釈できません: {e}"),
-                    )
-                })?,
+        serde_json::from_value(v.get("apps").cloned().unwrap_or(Value::Array(vec![]))).map_err(
+            |e| {
+                LoaError::new(
+                    Code::ApiError,
+                    format!("LIFFアプリ一覧を解釈できません: {e}"),
+                )
+            },
         )
     }
 

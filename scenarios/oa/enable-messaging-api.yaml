@@ -1,0 +1,45 @@
+id: oa.enable_messaging_api
+version: 1
+min_loa_version: "0.1.0"
+operation: oa.enable_messaging_api
+status: provisional
+description: 承認済みの公式アカウントでMessaging APIを有効にし、チャネルIDとシークレットを読む
+inputs:
+  oa_id: { type: string, required: true }
+  name: { type: string, required: true }
+  provider: { type: string, required: true }
+outputs:
+  channel_id: { type: string }
+  channel_secret: { type: secret }
+steps:
+  - goto: "https://manager.line.biz/account/{{oa_id}}/setting/messaging-api"
+  - require_login: true
+  - confirm_target: { css: "header", pattern: "(@[A-Za-z0-9._-]+)", equals: "{{oa_id}}" }
+  - assert: { text_contains: "{{name}}" }
+  - click: { role: button, name: "Messaging APIを利用する" }
+  - wait_for: { role: dialog }
+  - if_exists:
+      label: "開発者の名前"
+      then:
+        - human:
+            message: "開発者情報（名前・メールアドレス）を入力して「同意する」を押してください"
+            until: { exists: { label: "プロバイダーを作成" } }
+  - if_exists:
+      role: radio
+      name: "{{provider}}"
+      then:
+        - click: { role: radio, name: "{{provider}}" }
+      else:
+        - click: { role: radio, name: "プロバイダーを作成" }
+        - fill: { label: "プロバイダー名", value: "{{provider}}" }
+  - agree_terms:
+      terms_id: "line-official-account-api-terms"
+      title: "LINE公式アカウントAPI利用規約"
+      role: button
+      name: "同意する"
+      click: true
+      link: "https://terms2.line.me/official_account_api_terms_jp?lang=ja"
+  - click: { role: button, name: "OK", within: { role: dialog } }
+  - wait_text: "Channel ID"
+  - read: { label: "Channel ID", pattern: "(\\d{10})", into: channel_id }
+  - read_secret: { label: "Channel secret", pattern: "([0-9a-f]{32})", into: channel_secret }

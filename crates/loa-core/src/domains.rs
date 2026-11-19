@@ -76,6 +76,23 @@ fn blocked(raw: &str) -> LoaError {
     )
 }
 
+/// Test builds only: map real LINE hosts to the local fake console
+/// (`LOA_TEST_HOST_MAP=developers.line.biz=http://127.0.0.1:9/dev,...`). No-op otherwise.
+pub fn test_rewrite(u: &str) -> String {
+    #[cfg(feature = "test-hooks")]
+    if let Ok(map) = std::env::var("LOA_TEST_HOST_MAP") {
+        for pair in map.split(',') {
+            if let Some((host, base)) = pair.split_once('=') {
+                let prefix = format!("https://{}", host.trim());
+                if let Some(rest) = u.strip_prefix(&prefix) {
+                    return format!("{}{}", base.trim().trim_end_matches('/'), rest);
+                }
+            }
+        }
+    }
+    u.to_string()
+}
+
 /// Is this a sign-in page (LINE Business ID / LINE Login)?
 pub fn is_login_url(raw: &str) -> bool {
     match url::Url::parse(raw) {

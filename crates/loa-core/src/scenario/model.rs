@@ -174,6 +174,8 @@ pub enum Step {
     Paste(PasteStep),
     /// Stop with LOCKED_BY_REVIEW when the element exists (MINI App under review / published).
     LockedIfExists(Locator),
+    /// Run `then` when an input variable is non-empty (optional fields), otherwise `else`.
+    IfSet(IfSetStep),
 }
 
 impl Step {
@@ -200,6 +202,7 @@ impl Step {
             Step::ConfirmTarget(_) => "confirm_target",
             Step::Paste(_) => "paste",
             Step::LockedIfExists(_) => "locked_if_exists",
+            Step::IfSet(_) => "if_set",
         }
     }
 }
@@ -222,12 +225,26 @@ pub struct ValueStep {
 pub struct CheckStep {
     #[serde(flatten)]
     pub target: Locator,
-    #[serde(default = "yes")]
-    pub checked: bool,
+    /// true / false / on / off, or a `{{variable}}` holding one of them
+    #[serde(default = "yes", deserialize_with = "bool_or_string")]
+    pub checked: String,
 }
 
-fn yes() -> bool {
-    true
+fn yes() -> String {
+    "true".into()
+}
+
+fn bool_or_string<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum B {
+        B(bool),
+        S(String),
+    }
+    Ok(match B::deserialize(d)? {
+        B::B(b) => b.to_string(),
+        B::S(s) => s,
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -283,7 +300,7 @@ pub struct TermsStep {
     /// Stable id of the terms type, e.g. `line-developers-agreement`.
     pub terms_id: String,
     /// Display name shown in the approval dialog.
-    pub name: String,
+    pub title: String,
     /// Checkbox (or button) that expresses agreement.
     #[serde(flatten)]
     pub target: Locator,
@@ -302,6 +319,19 @@ pub struct TermsStep {
 pub struct IfExistsStep {
     #[serde(flatten)]
     pub target: Locator,
+    /// Keep looking this long before taking `else` (elements that appear late, like dialogs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wait_ms: Option<u64>,
+    #[serde(default)]
+    pub then: Vec<Step>,
+    #[serde(default, rename = "else")]
+    pub otherwise: Vec<Step>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct IfSetStep {
+    pub var: String,
     #[serde(default)]
     pub then: Vec<Step>,
     #[serde(default, rename = "else")]
@@ -363,7 +393,7 @@ steps:
   - click: { role: button, name: "新規チャネル作成" }
   - click: { text: "LINEログイン" }
   - fill:  { label: "チャネル名", value: "{{name}}" }
-  - agree_terms: { terms_id: "line-developers-agreement", name: "LINE Developers Agreement", label: "利用規約に同意" }
+  - agree_terms: { terms_id: "line-developers-agreement", title: "LINE Developers Agreement", label: "利用規約に同意" }
   - click: { role: button, name: "作成" }
   - wait_url: "**/channel/*/basics"
   - read:        { label: "チャネルID", into: channel_id }

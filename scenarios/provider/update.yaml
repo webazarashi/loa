@@ -1,0 +1,15 @@
+id: provider.update
+version: 1
+min_loa_version: "0.1.0"
+operation: provider.update
+status: provisional
+inputs:
+  provider_id: { type: string, required: true }
+  name: { type: string, required: true }
+steps:
+  - goto: "https://developers.line.biz/console/provider/{{provider_id}}/setting"
+  - require_login: true
+  - fill: { label: "プロバイダー名", value: "{{name}}" }
+  - click: { role: button, name: "保存" }
+verify:
+  - text_contains: "{{name}}"

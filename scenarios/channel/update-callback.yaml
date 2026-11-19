@@ -1,0 +1,15 @@
+id: channel.update.callback
+version: 1
+min_loa_version: "0.1.0"
+operation: channel.update
+status: provisional
+description: LINEログイン設定のコールバックURL（改行区切りで複数）を置き換える
+inputs:
+  channel_id: { type: string, required: true }
+  callback_urls: { type: string, required: true }
+steps:
+  - goto: "https://developers.line.biz/console/channel/{{channel_id}}/line-login"
+  - require_login: true
+  - click: { role: button, name: "編集", within: { role: group, name: "コールバックURL" } }
+  - fill: { label: "コールバックURL", value: "{{callback_urls}}" }
+  - click: { role: button, name: "更新", within: { role: group, name: "コールバックURL" } }
