@@ -223,17 +223,18 @@ impl Env {
 
 impl Drop for Env {
     fn drop(&mut self) {
-        let _ = Command::new("agent-browser")
-            .args([
-                "--namespace",
-                &self.namespace,
-                "--session",
-                "loa-default",
-                "close",
-            ])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+        let ns = self.namespace.as_str();
+        for args in [
+            ["--namespace", ns, "--session", "loa-default", "close"].as_slice(),
+            // the saved (fake) login state lives in agent-browser's storage, not in `home`
+            ["--namespace", ns, "state", "clear", "--all"].as_slice(),
+        ] {
+            let _ = Command::new("agent-browser")
+                .args(args)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
         if std::env::var("LOA_E2E_KEEP").is_err() {
             let _ = std::fs::remove_dir_all(&self.home);
         }
@@ -613,6 +614,21 @@ fn official_account_flow() {
     let st = env.state();
     assert_eq!(st["oas"][&oid]["webhook"], true);
     assert_eq!(st["oas"][&oid]["chat"], false);
+
+    // a denied approval leaves the other requested changes undone too
+    env.set_approve("deny");
+    let r = env.run_done(&[
+        "oa",
+        "update",
+        "E2E Shop",
+        "--profile.status-message",
+        "changed-while-denied",
+        "--response.mode",
+        "chat",
+    ]);
+    assert_code(&r, 13);
+    assert_eq!(env.state()["oas"][&oid]["status_message"], "hello");
+    env.set_approve("approve");
 
     // 4. Messaging API (approval + terms), then webhook through the API
     let r = env.run_done(&[

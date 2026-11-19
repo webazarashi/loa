@@ -102,18 +102,18 @@ fn command_schema(path: &str) -> Result<Value> {
         if let Some(h) = a.get_help() {
             p.insert("description".into(), json!(h.to_string()));
         }
-        let name = match a.get_long() {
-            Some(l) => format!("--{l}"),
-            None => id.to_string(),
+        let (key, cli) = match a.get_long() {
+            Some(l) => (l.to_string(), format!("--{l}")),
+            None => (id.to_string(), format!("<{}>", id.to_uppercase())),
         };
-        p.insert("cli".into(), json!(name));
+        p.insert("cli".into(), json!(cli));
         if let Some(d) = a.get_default_values().first() {
             p.insert("default".into(), json!(d.to_string_lossy()));
         }
         if a.is_required_set() {
-            required.push(json!(id));
+            required.push(json!(key));
         }
-        props.insert(id.to_string(), Value::Object(p));
+        props.insert(key, Value::Object(p));
     }
     Ok(json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",

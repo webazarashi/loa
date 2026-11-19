@@ -183,7 +183,7 @@ pub struct ChannelCreateArgs {
     #[arg(long)]
     pub provider: String,
     /// login / miniapp（messaging は oa enable-messaging-api で作成）
-    #[arg(long = "type")]
+    #[arg(long = "type", value_name = "TYPE")]
     pub ty: String,
     #[arg(long)]
     pub name: String,

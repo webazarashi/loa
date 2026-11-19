@@ -105,7 +105,23 @@ pub fn fetch(ctx: &mut Ctx<'_>, provider_key: &str) -> Result<Listing> {
         }
         prov.channels.insert(name, rec);
     }
+    // Channels deleted in the console disappear from the map. An empty listing is not trusted
+    // (a broken list scenario would otherwise make `ensure` create duplicates).
+    let stale_kept = if items.is_empty() {
+        !prov.channels.is_empty()
+    } else {
+        let live: std::collections::HashSet<&str> =
+            items.iter().map(|(id, _)| id.as_str()).collect();
+        prov.channels
+            .retain(|_, c| c.id.is_empty() || live.contains(c.id.as_str()));
+        false
+    };
     ctx.save_resources(&res)?;
+    if stale_kept {
+        ctx.warnings.push(format!(
+            "コンソールでプロバイダー {pname} のチャネルを読み取れませんでした。手元の対応表のまま進めます"
+        ));
+    }
     Ok((pname, pid, items))
 }
 

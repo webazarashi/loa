@@ -10,6 +10,12 @@ use serde_json::json;
 
 pub fn login(ctx: &mut Ctx<'_>) -> Result<Envelope> {
     validate_business_id(&ctx.business_id)?;
+    if ctx.dry_run {
+        return Ok(super::planned(
+            "session",
+            json!({"login": {"business_id": ctx.business_id}}),
+        ));
+    }
     let out = ctx.scenario("session.login", OpKind::SessionLogin, vars(&[]))?;
     let mut cfg = crate::config::Config::load(&ctx.paths)?;
     cfg.remember_business(&ctx.business_id);
@@ -48,6 +54,12 @@ pub fn whoami(ctx: &mut Ctx<'_>) -> Result<Envelope> {
 
 pub fn logout(ctx: &mut Ctx<'_>) -> Result<Envelope> {
     validate_business_id(&ctx.business_id)?;
+    if ctx.dry_run {
+        return Ok(super::planned(
+            "session",
+            json!({"logout": {"business_id": ctx.business_id}}),
+        ));
+    }
     let b = ctx.browser()?;
     b.forget_state().map_err(crate::browser::to_loa_error)?;
     Ok(Envelope::new(

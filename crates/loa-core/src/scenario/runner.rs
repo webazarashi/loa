@@ -150,6 +150,11 @@ impl<'a> Runner<'a> {
     // ---------------------------------------------------------------- steps
 
     fn step(&mut self, step: &Step) -> Result<()> {
+        // Client-side redirects can finish after the previous step's check: verify the page
+        // before every step that reads or acts on it.
+        if !matches!(step, Step::Goto(_)) && self.last_goto.is_some() {
+            self.check_location()?;
+        }
         match step {
             Step::Goto(u) => {
                 let url = crate::domains::test_rewrite(&render_url(u, &self.vars)?);
@@ -454,6 +459,13 @@ impl<'a> Runner<'a> {
 
     fn check_location(&mut self) -> Result<()> {
         let u = self.browser.url().map_err(to_loa_error)?;
+        // An unreadable location must not pass as "allowed".
+        if u.trim().is_empty() {
+            return Err(LoaError::new(
+                Code::DomainBlocked,
+                "現在のURLを確認できないため停止しました",
+            ));
+        }
         self.allow.check(&u)
     }
 

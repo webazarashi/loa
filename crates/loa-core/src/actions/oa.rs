@@ -227,6 +227,79 @@ pub fn update(ctx: &mut Ctx<'_>, a: &UpdateArgs) -> Result<Envelope> {
     let mut done = serde_json::Map::new();
     let mut plan = serde_json::Map::new();
 
+    // Current response settings (shown as "before" in the plan and the approval dialog).
+    let mut response_before = std::collections::BTreeMap::<String, String>::new();
+    if a.response_mode.is_some() {
+        let out = ctx.scenario("oa.get.response", OpKind::OaGet, vars(&[("oa_id", &id)]))?;
+        for k in ["chat", "webhook", "auto_reply"] {
+            if let Some(v) = out.str(k) {
+                response_before.insert(k.into(), v);
+            }
+        }
+    }
+    // Ask every approval before changing anything, so a denial leaves the account untouched.
+    if !ctx.dry_run {
+        if let Some(who) = &a.members_add {
+            let role = a.members_role.clone().unwrap_or_else(|| "operator".into());
+            let label = role_label(&role)?;
+            let req = ApprovalRequest::operation(
+                OpKind::OaUpdateMembers,
+                "公式アカウントにメンバーを招待します",
+            )
+            .target("公式アカウント", format!("{name} ({id})"))
+            .change("メンバー", None, Some(format!("{who}（{label}）")))
+            .note("発行される招待URLを受け取った人は、この権限で公式アカウントを操作できます。");
+            ctx.approve(
+                OpKind::OaUpdateMembers,
+                &PolicyContext::default(),
+                None,
+                req,
+            )?;
+        }
+        if let Some(who) = &a.members_remove {
+            let req = ApprovalRequest::operation(
+                OpKind::OaUpdateMembers,
+                "公式アカウントからメンバーを削除します",
+            )
+            .target("公式アカウント", format!("{name} ({id})"))
+            .change("メンバー", Some(who.clone()), Some("（削除）".into()));
+            ctx.approve(
+                OpKind::OaUpdateMembers,
+                &PolicyContext::default(),
+                None,
+                req,
+            )?;
+        }
+        if let Some(mode) = &a.response_mode {
+            let (chat, webhook, auto) = response_flags(mode)?;
+            let b = |k: &str| {
+                response_before
+                    .get(k)
+                    .cloned()
+                    .unwrap_or_else(|| "?".into())
+            };
+            let req = ApprovalRequest::operation(
+                OpKind::OaUpdateResponse,
+                "公式アカウントの応答設定を変更します",
+            )
+            .target("公式アカウント", format!("{name} ({id})"))
+            .change("チャット", Some(b("chat")), Some(onoff(chat).into()))
+            .change("Webhook", Some(b("webhook")), Some(onoff(webhook).into()))
+            .change(
+                "応答メッセージ",
+                Some(b("auto_reply")),
+                Some(onoff(auto).into()),
+            )
+            .note("本番の公式アカウントでは、友だちへの応答のしかたがすぐに変わります。");
+            ctx.approve(
+                OpKind::OaUpdateResponse,
+                &PolicyContext::default(),
+                None,
+                req,
+            )?;
+        }
+    }
+
     if any_profile {
         let icon = a
             .profile_icon
@@ -283,19 +356,6 @@ pub fn update(ctx: &mut Ctx<'_>, a: &UpdateArgs) -> Result<Envelope> {
                 json!({"invite": who, "role": role, "approval_required": true}),
             );
         } else {
-            let req = ApprovalRequest::operation(
-                OpKind::OaUpdateMembers,
-                "公式アカウントにメンバーを招待します",
-            )
-            .target("公式アカウント", format!("{name} ({id})"))
-            .change("メンバー", None, Some(format!("{who}（{label}）")))
-            .note("発行される招待URLを受け取った人は、この権限で公式アカウントを操作できます。");
-            ctx.approve(
-                OpKind::OaUpdateMembers,
-                &PolicyContext::default(),
-                None,
-                req,
-            )?;
             let out = ctx.scenario(
                 "oa.update.members.invite",
                 OpKind::OaUpdateMembers,
@@ -315,18 +375,6 @@ pub fn update(ctx: &mut Ctx<'_>, a: &UpdateArgs) -> Result<Envelope> {
                 json!({"remove": who, "approval_required": true}),
             );
         } else {
-            let req = ApprovalRequest::operation(
-                OpKind::OaUpdateMembers,
-                "公式アカウントからメンバーを削除します",
-            )
-            .target("公式アカウント", format!("{name} ({id})"))
-            .change("メンバー", Some(who.clone()), Some("（削除）".into()));
-            ctx.approve(
-                OpKind::OaUpdateMembers,
-                &PolicyContext::default(),
-                None,
-                req,
-            )?;
             ctx.scenario(
                 "oa.update.members.remove",
                 OpKind::OaUpdateMembers,
@@ -337,32 +385,17 @@ pub fn update(ctx: &mut Ctx<'_>, a: &UpdateArgs) -> Result<Envelope> {
     }
     if let Some(mode) = &a.response_mode {
         let (chat, webhook, auto) = response_flags(mode)?;
-        let before = ctx.scenario("oa.get.response", OpKind::OaGet, vars(&[("oa_id", &id)]))?;
-        let b = |k: &str| before.str(k).unwrap_or_else(|| "?".into());
+        let b = |k: &str| {
+            response_before
+                .get(k)
+                .cloned()
+                .unwrap_or_else(|| "?".into())
+        };
         let after =
             json!({"chat": onoff(chat), "webhook": onoff(webhook), "auto_reply": onoff(auto)});
         if ctx.dry_run {
             plan.insert("response".into(), json!({"before": {"chat": b("chat"), "webhook": b("webhook"), "auto_reply": b("auto_reply")}, "after": after, "approval_required": true}));
         } else {
-            let req = ApprovalRequest::operation(
-                OpKind::OaUpdateResponse,
-                "公式アカウントの応答設定を変更します",
-            )
-            .target("公式アカウント", format!("{name} ({id})"))
-            .change("チャット", Some(b("chat")), Some(onoff(chat).into()))
-            .change("Webhook", Some(b("webhook")), Some(onoff(webhook).into()))
-            .change(
-                "応答メッセージ",
-                Some(b("auto_reply")),
-                Some(onoff(auto).into()),
-            )
-            .note("本番の公式アカウントでは、友だちへの応答のしかたがすぐに変わります。");
-            ctx.approve(
-                OpKind::OaUpdateResponse,
-                &PolicyContext::default(),
-                None,
-                req,
-            )?;
             ctx.scenario(
                 "oa.update.response",
                 OpKind::OaUpdateResponse,

@@ -192,6 +192,26 @@ pub fn lock_is_held(path: &Path) -> bool {
     matches!(lock.try_write(), Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock)
 }
 
+/// Mark the task failed with `err` if no worker holds its lock. Returns false if one does.
+/// Taken under the worker lock, so it cannot interleave with a worker that is starting.
+pub fn abandon_if_free(paths: &Paths, id: &str, err: LoaError) -> Result<bool> {
+    let f = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(worker_lock_path(paths, id))?;
+    let mut lock = fd_lock::RwLock::new(f);
+    let _guard = match lock.try_write() {
+        Ok(g) => g,
+        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => return Ok(false),
+        Err(e) => return Err(e.into()),
+    };
+    if !read_status(paths, id)?.state.is_terminal() {
+        write_result(paths, id, &Err(err))?;
+    }
+    Ok(true)
+}
+
 pub fn worker_lock_path(paths: &Paths, id: &str) -> PathBuf {
     paths.task_dir(id).join("worker.lock")
 }
@@ -298,21 +318,21 @@ pub fn follow(
                     .with_next(format!("loa wait {id} --timeout 300")));
             }
         }
+        // A worker that has started holds the lock until it writes the result. One that never
+        // started gets a generous grace period (keychain prompts, antivirus, cold disks).
         let started = st.pid.is_some() || st.state != TaskState::Pending;
-        let grace = start.elapsed() > Duration::from_secs(10);
+        let grace = start.elapsed() > Duration::from_secs(30);
         if (started || grace) && !lock_is_held(&lock) {
-            // re-check: the worker may have just finished
-            let st2 = read_status(paths, id)?;
-            if !st2.state.is_terminal() {
-                return Err(LoaError::new(
-                    Code::WorkerLost,
-                    "タスクを実行していたプロセスが終了しました",
-                )
-                .with_task(id)
-                .with_next(
-                    "同じコマンドをもう一度実行してください（作成済みのものは重複作成されません）",
-                ));
-            }
+            let lost = LoaError::new(
+                Code::WorkerLost,
+                "タスクを実行していたプロセスが終了しました",
+            )
+            .with_next(
+                "同じコマンドをもう一度実行してください（作成済みのものは重複作成されません）",
+            );
+            // Closing the task under the worker lock means a late worker sees it finished
+            // and exits instead of running the command a second time.
+            abandon_if_free(paths, id, lost)?;
             continue;
         }
         if let Some(t) = timeout

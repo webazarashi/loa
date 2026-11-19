@@ -41,7 +41,16 @@ pub fn validate(s: &Scenario, expected: OpKind) -> Result<()> {
         known,
         written: BTreeSet::new(),
         confirm_seen: false,
+        depth: 0,
     };
+    if !s
+        .id
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '_' | '-'))
+        || s.id.is_empty()
+    {
+        return fail(format!("シナリオIDに使えない文字があります: {}", s.id));
+    }
     for step in &s.steps {
         ctx.step(step)?;
     }
@@ -64,7 +73,10 @@ struct Ctx<'a> {
     op: OpKind,
     known: BTreeSet<String>,
     written: BTreeSet<String>,
+    /// A top-level `confirm_target` has been seen.
     confirm_seen: bool,
+    /// Nesting inside if_exists / if_set (a confirmation there may not run).
+    depth: usize,
 }
 
 impl Ctx<'_> {
@@ -131,6 +143,18 @@ impl Ctx<'_> {
                 self.op.as_str()
             )));
         }
+        self.confirmed_before(kind)
+    }
+
+    /// Operations that need approval must confirm the on-screen target, unconditionally,
+    /// before the first step that changes anything.
+    fn confirmed_before(&self, kind: &str) -> Result<()> {
+        if self.op.needs_target_confirmation() && !self.confirm_seen {
+            return Err(self.err(format!(
+                "{} では {kind} より前に（条件分岐の外で）confirm_target を置いてください",
+                self.op.as_str()
+            )));
+        }
         Ok(())
     }
 
@@ -160,6 +184,16 @@ impl Ctx<'_> {
                             self.op.as_str()
                         )));
                     }
+                }
+                if self.op.is_mutating() {
+                    // the destructive-label guard can only judge clicks it can read
+                    if l.visible_name().is_none() {
+                        return Err(self.err(
+                            "変更系の操作では、クリックする要素を name / text / label で指定してください"
+                                .into(),
+                        ));
+                    }
+                    self.confirmed_before("click")?;
                 }
                 if let Some(n) = l.visible_name()
                     && is_destructive_label(n)
@@ -222,15 +256,19 @@ impl Ctx<'_> {
             }
             Step::IfExists(i) => {
                 self.locator(&i.target)?;
+                self.depth += 1;
                 for s in i.then.iter().chain(i.otherwise.iter()) {
                     self.step(s)?;
                 }
+                self.depth -= 1;
             }
             Step::Assert(c) => self.check(c)?,
             Step::ConfirmTarget(c) => {
                 self.locator(&c.target)?;
                 self.vars(&c.equals)?;
-                self.confirm_seen = true;
+                if self.depth == 0 {
+                    self.confirm_seen = true;
+                }
             }
             Step::Paste(p) => {
                 self.read_only_forbids("paste")?;
@@ -241,9 +279,11 @@ impl Ctx<'_> {
                 if !self.known.contains(&i.var) {
                     return Err(self.err(format!("if_set の変数 {} が未定義です", i.var)));
                 }
+                self.depth += 1;
                 for s in i.then.iter().chain(i.otherwise.iter()) {
                     self.step(s)?;
                 }
+                self.depth -= 1;
             }
         }
         Ok(())
@@ -320,6 +360,34 @@ mod tests {
         let steps = "  - confirm_target: { label: \"チャネル名\", equals: \"{{name}}\" }\n  - click: { role: button, name: \"削除\" }\n";
         let s = sc("channel.delete", steps, "  {}\n");
         assert!(validate(&s, OpKind::ChannelDelete).is_ok());
+    }
+
+    #[test]
+    fn confirm_target_must_come_first_and_unconditionally() {
+        // after the destructive click
+        let steps = "  - click: { role: button, name: \"削除\" }\n  - confirm_target: { label: \"チャネル名\", equals: \"{{name}}\" }\n";
+        let s = sc("channel.delete", steps, "  {}\n");
+        assert!(validate(&s, OpKind::ChannelDelete).is_err());
+        // inside a branch that may not run
+        let steps = "  - if_exists:\n      text: \"x\"\n      then:\n        - confirm_target: { label: \"チャネル名\", equals: \"{{name}}\" }\n  - click: { role: button, name: \"削除\" }\n";
+        let s = sc("channel.delete", steps, "  {}\n");
+        assert!(validate(&s, OpKind::ChannelDelete).is_err());
+    }
+
+    #[test]
+    fn mutating_clicks_need_a_readable_name() {
+        let s = sc(
+            "channel.update",
+            "  - click: { css: \"#danger\" }\n",
+            "  {}\n",
+        );
+        assert!(validate(&s, OpKind::ChannelUpdate).is_err());
+        let s = sc(
+            "channel.update",
+            "  - click: { role: button, name: \"更新\" }\n",
+            "  {}\n",
+        );
+        assert!(validate(&s, OpKind::ChannelUpdate).is_ok());
     }
 
     #[test]

@@ -57,6 +57,12 @@ pub fn fetch(ctx: &mut Ctx<'_>) -> Result<Vec<ProviderItem>> {
         }
         biz.providers.entry(p.name.clone()).or_default().id = p.id.clone();
     }
+    // Providers deleted in the console disappear from the map (an empty listing is not trusted).
+    if !items.is_empty() {
+        let live: std::collections::HashSet<&str> = items.iter().map(|p| p.id.as_str()).collect();
+        biz.providers
+            .retain(|_, r| r.id.is_empty() || live.contains(r.id.as_str()));
+    }
     ctx.save_resources(&res)?;
     Ok(items)
 }

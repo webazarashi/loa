@@ -15,6 +15,10 @@ pub const REPO: Option<&str> = option_env!("LOA_SCENARIO_REPO");
 pub const PUBKEY: Option<&str> = option_env!("LOA_SCENARIO_PUBKEY");
 
 const MAX_BUNDLE_BYTES: u64 = 5 * 1024 * 1024;
+/// Limits after decompression (a small signed gzip must not expand without bound).
+const MAX_FILE_BYTES: u64 = 512 * 1024;
+const MAX_TOTAL_BYTES: u64 = 20 * 1024 * 1024;
+const MAX_FILES: usize = 1000;
 
 fn active_file(paths: &Paths) -> std::path::PathBuf {
     paths.scenarios_dir().join("ACTIVE")
@@ -180,6 +184,7 @@ pub fn install(paths: &Paths, tgz: &[u8], current: &semver::Version) -> Result<S
     crate::paths::create_private_dir(&staging)?;
     let result = (|| -> Result<String> {
         let mut ar = tar::Archive::new(flate2::read::GzDecoder::new(tgz));
+        let (mut files, mut total) = (0usize, 0u64);
         for entry in ar
             .entries()
             .map_err(|e| LoaError::other(format!("配布物を展開できません: {e}")))?
@@ -189,23 +194,39 @@ pub fn install(paths: &Paths, tgz: &[u8], current: &semver::Version) -> Result<S
             if !entry.header().entry_type().is_file() {
                 continue;
             }
-            let path = entry
+            let raw = entry
                 .path()
                 .map_err(|e| LoaError::other(format!("配布物のパスが不正です: {e}")))?
                 .into_owned();
-            if path
-                .components()
-                .any(|c| !matches!(c, std::path::Component::Normal(_)))
-            {
-                return Err(LoaError::other("配布物に不正なパスが含まれています"));
+            // `./VERSION` (tar -C dir .) is fine; anything else but plain names is not.
+            let mut path = std::path::PathBuf::new();
+            for c in raw.components() {
+                match c {
+                    std::path::Component::CurDir => {}
+                    std::path::Component::Normal(n) => path.push(n),
+                    _ => return Err(LoaError::other("配布物に不正なパスが含まれています")),
+                }
+            }
+            if path.as_os_str().is_empty() {
+                continue;
             }
             let ok_ext = path.extension().and_then(|e| e.to_str()) == Some("yaml")
                 || path.file_name().and_then(|n| n.to_str()) == Some("VERSION");
             if !ok_ext {
                 continue;
             }
+            files += 1;
+            if files > MAX_FILES {
+                return Err(LoaError::other("配布物のファイル数が多すぎます"));
+            }
             let mut buf = Vec::new();
-            entry.read_to_end(&mut buf)?;
+            (&mut entry)
+                .take(MAX_FILE_BYTES + 1)
+                .read_to_end(&mut buf)?;
+            total += buf.len() as u64;
+            if buf.len() as u64 > MAX_FILE_BYTES || total > MAX_TOTAL_BYTES {
+                return Err(LoaError::other("配布物の展開後のサイズが大きすぎます"));
+            }
             let dest = staging.join(&path);
             if let Some(p) = dest.parent() {
                 std::fs::create_dir_all(p)?;
@@ -291,6 +312,56 @@ mod tests {
     fn signature_mismatch_rejected() {
         // checksum matches the tampered data, but the signature does not
         assert!(verify(b"tampered", &sum(b"tampered"), SIG, PK).is_err());
+    }
+
+    fn tgz(entries: &[(&str, Vec<u8>)]) -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let enc = flate2::write::GzEncoder::new(&mut buf, flate2::Compression::default());
+            let mut b = tar::Builder::new(enc);
+            for (name, data) in entries {
+                let mut h = tar::Header::new_gnu();
+                h.set_size(data.len() as u64);
+                h.set_mode(0o644);
+                h.set_entry_type(tar::EntryType::Regular);
+                b.append_data(&mut h, name, &data[..]).unwrap();
+            }
+            b.into_inner().unwrap().finish().unwrap();
+        }
+        buf
+    }
+
+    fn scratch(tag: &str) -> (std::path::PathBuf, Paths) {
+        let dir = std::env::temp_dir().join(format!("loa-bundle-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let paths = Paths::at(&dir);
+        paths.ensure().unwrap();
+        (dir, paths)
+    }
+
+    #[test]
+    fn install_accepts_dot_slash_entries() {
+        let (dir, paths) = scratch("dot");
+        let yaml = b"id: session.whoami\nversion: 2\nmin_loa_version: \"0.1.0\"\noperation: session.whoami\noutputs:\n  url: { type: string }\nsteps:\n  - goto: \"https://developers.line.biz/console/\"\n  - read_url: { pattern: \"^([^?#]*)\", into: url }\n".to_vec();
+        let data = tgz(&[
+            ("./VERSION", b"9.9.9\n".to_vec()),
+            ("./session/whoami.yaml", yaml),
+        ]);
+        let cur = semver::Version::parse("0.1.0").unwrap();
+        assert_eq!(install(&paths, &data, &cur).unwrap(), "9.9.9");
+        assert!(dir.join("scenarios/9.9.9/session/whoami.yaml").is_file());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn install_rejects_oversized_files_after_decompression() {
+        let (dir, paths) = scratch("big");
+        let big = vec![b'a'; (MAX_FILE_BYTES + 10) as usize];
+        let data = tgz(&[("VERSION", b"9.9.8\n".to_vec()), ("big.yaml", big)]);
+        assert!((data.len() as u64) < MAX_FILE_BYTES, "compresses well");
+        let cur = semver::Version::parse("0.1.0").unwrap();
+        assert!(install(&paths, &data, &cur).is_err());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

@@ -354,6 +354,10 @@ fn worker(id: &str) {
     let Ok(true) = task::hold_lock(&task::worker_lock_path(&p, id)) else {
         return;
     };
+    // `loa wait` may have given up on this task before we started (WORKER_LOST).
+    if task::read_status(&p, id).is_ok_and(|s| s.state.is_terminal()) {
+        return;
+    }
     let _ = task::update_status(&p, id, |s| {
         s.state = task::TaskState::Running;
         s.pid = Some(std::process::id());
@@ -495,6 +499,16 @@ fn scenarios(c: ScenariosCmd) -> Outcome {
                 cfg.scenarios_pin = None;
                 cfg.save(&p)?;
                 return Ok(Envelope::new("scenarios", "unpinned", json!({})));
+            }
+            let looks_like_version = !version.is_empty()
+                && version.chars().next().is_some_and(|c| c.is_ascii_digit())
+                && version
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+'));
+            if !looks_like_version {
+                return Err(LoaError::usage(format!(
+                    "バージョンの形式が不正です: {version}（例: 1.4.0）"
+                )));
             }
             if !loa_core::bundle::installed_versions(&p).contains(&version) {
                 loa_core::bundle::update(&p, Some(&version))?;
