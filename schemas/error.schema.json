@@ -1,0 +1,67 @@
+{
+  "$defs": {
+    "Code": {
+      "description": "Machine readable error code. The exit code is fixed per code (spec 3-5, plus v1.1 additions).",
+      "enum": [
+        "ERROR",
+        "USAGE",
+        "LOGIN_REQUIRED",
+        "HUMAN_ACTION_REQUIRED",
+        "APPROVAL_REQUIRED",
+        "APPROVAL_DENIED",
+        "WAIT_TIMEOUT",
+        "WORKER_LOST",
+        "UI_CHANGED",
+        "LOCKED_BY_REVIEW",
+        "DOMAIN_BLOCKED",
+        "RATE_LIMITED",
+        "BUSY",
+        "API_ERROR",
+        "SETUP_REQUIRED"
+      ],
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The error every loa operation returns. It is rendered as `{ok:false,...}` in `--json` mode.",
+  "properties": {
+    "code": {
+      "$ref": "#/$defs/Code"
+    },
+    "detail": true,
+    "hint": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "message": {
+      "type": "string"
+    },
+    "next": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "report": {
+      "description": "Local path of a failure report (UI_CHANGED and friends).",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "task": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "code",
+    "message"
+  ],
+  "title": "LoaError",
+  "type": "object"
+}

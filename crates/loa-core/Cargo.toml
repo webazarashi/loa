@@ -6,6 +6,10 @@ license.workspace = true
 rust-version.workspace = true
 
 [features]
+default = ["tls"]
+# HTTPS for the LINE API and GitHub Releases. Disabled only to type-check other targets
+# without a C toolchain for ring (see docs/verification.md).
+tls = ["ureq/rustls"]
 # Test-only switches (fake console, API base override, auto approval, file secret store).
 # Refused at compile time outside debug builds.
 test-hooks = []

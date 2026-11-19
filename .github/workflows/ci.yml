@@ -1,0 +1,62 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  AGENT_BROWSER_VERSION: "0.41.2"
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy --workspace --all-targets --features loa-cli/test-hooks -- -D warnings
+      - run: cargo test --workspace
+      - name: release build must not accept test hooks
+        shell: bash
+        run: |
+          if cargo build --release -p loa-cli --features test-hooks 2>/dev/null; then
+            echo "test-hooks must not compile in release builds"; exit 1
+          fi
+
+  schemas:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: scripts/gen-schemas.sh
+      - name: schemas/ is up to date
+        run: git diff --exit-code schemas/
+
+  e2e:
+    # The real loa binary drives a real headless browser against tests/fixtures/fake_line.py.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install -g agent-browser@${{ env.AGENT_BROWSER_VERSION }}
+      - run: agent-browser install
+      - run: cargo test -p loa-cli --features test-hooks --test e2e -- --ignored --test-threads=1
+        timeout-minutes: 20

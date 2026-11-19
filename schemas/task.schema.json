@@ -1,0 +1,104 @@
+{
+  "$defs": {
+    "Code": {
+      "description": "Machine readable error code. The exit code is fixed per code (spec 3-5, plus v1.1 additions).",
+      "enum": [
+        "ERROR",
+        "USAGE",
+        "LOGIN_REQUIRED",
+        "HUMAN_ACTION_REQUIRED",
+        "APPROVAL_REQUIRED",
+        "APPROVAL_DENIED",
+        "WAIT_TIMEOUT",
+        "WORKER_LOST",
+        "UI_CHANGED",
+        "LOCKED_BY_REVIEW",
+        "DOMAIN_BLOCKED",
+        "RATE_LIMITED",
+        "BUSY",
+        "API_ERROR",
+        "SETUP_REQUIRED"
+      ],
+      "type": "string"
+    },
+    "TaskState": {
+      "enum": [
+        "pending",
+        "running",
+        "waiting",
+        "done",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "Waiting": {
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/Code"
+        },
+        "hint": {
+          "type": "string"
+        },
+        "since": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "hint",
+        "since"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "created_at": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "pid": {
+      "default": null,
+      "format": "uint32",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "progress": {
+      "default": null,
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "state": {
+      "$ref": "#/$defs/TaskState"
+    },
+    "updated_at": {
+      "type": "string"
+    },
+    "waiting": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Waiting"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "id",
+    "state",
+    "created_at",
+    "updated_at"
+  ],
+  "title": "TaskStatus",
+  "type": "object"
+}

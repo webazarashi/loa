@@ -11,10 +11,12 @@ name = "loa"
 path = "src/main.rs"
 
 [features]
+default = ["tls"]
+tls = ["loa-core/tls"]
 test-hooks = ["loa-core/test-hooks"]
 
 [dependencies]
-loa-core.workspace = true
+loa-core = { workspace = true, default-features = false }
 loa-ui.workspace = true
 clap.workspace = true
 serde.workspace = true

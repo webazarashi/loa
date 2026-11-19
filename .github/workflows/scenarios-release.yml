@@ -1,0 +1,39 @@
+name: scenarios-release
+
+# Tag scenarios-vX.Y.Z → publish loa-scenarios-X.Y.Z.tar.gz with .sha256 and .minisig.
+# The minisign secret key lives only in the MINISIGN_SECRET_KEY secret (unencrypted key, -W).
+on:
+  push:
+    tags: ["scenarios-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: version matches the tag
+        run: test "$(cat scenarios/VERSION)" = "${GITHUB_REF_NAME#scenarios-v}"
+      - name: every scenario parses and validates
+        run: cargo test -p loa-core bundled_scenarios_are_valid
+      - name: bundle
+        run: scripts/bundle-scenarios.sh dist
+      - name: sign
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq minisign
+          umask 077
+          keyfile="$RUNNER_TEMP/minisign.sec"
+          printf '%s\n' "$MINISIGN_SECRET_KEY" > "$keyfile"
+          f="dist/loa-scenarios-${GITHUB_REF_NAME#scenarios-v}.tar.gz"
+          minisign -S -s "$keyfile" -m "$f" -x "$f.minisig" -t "loa scenarios ${GITHUB_REF_NAME#scenarios-v}"
+          rm -f "$keyfile"
+      - name: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "scenarios $GITHUB_REF_NAME" --notes "loa scenarios update で取得できます。"

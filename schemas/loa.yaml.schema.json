@@ -1,0 +1,313 @@
+{
+  "$defs": {
+    "ChannelSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "callback_urls": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "description": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "liff": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/LiffSpec"
+          },
+          "type": "array"
+        },
+        "miniapp": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MiniappSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "description": "login | miniapp",
+          "type": "string"
+        },
+        "webhook_url": {
+          "description": "v1.0 field. Messaging channels are declared under official_accounts (v1.1).",
+          "type": [
+            "string",
+            "null"
+          ],
+          "writeOnly": true
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "type": "object"
+    },
+    "LiffSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "size": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "url"
+      ],
+      "type": "object"
+    },
+    "MessagingSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "webhook_url": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "provider"
+      ],
+      "type": "object"
+    },
+    "MiniappSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "developing": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "published": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "review": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "OaSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "messaging_api": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MessagingSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "name": {
+          "type": "string"
+        },
+        "profile": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProfileSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "response": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResponseSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "settings": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SettingsSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "subcategory": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "ProfileSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "background": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "icon": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status_message": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ProviderSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "channels": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ChannelSpec"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "ResponseSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "description": "chat | webhook | auto_reply",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "type": "object"
+    },
+    "SettingsSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "join_groups": {
+          "default": null,
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "business_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "official_accounts": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/OaSpec"
+      },
+      "type": "array"
+    },
+    "providers": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ProviderSpec"
+      },
+      "type": "array"
+    },
+    "version": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "version"
+  ],
+  "title": "SpecFile",
+  "type": "object"
+}

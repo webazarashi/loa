@@ -1,0 +1,13 @@
+PackageIdentifier: OWNER.loa
+PackageVersion: VERSION
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: loa-VERSION-x86_64-pc-windows-msvc\loa.exe
+    PortableCommandAlias: loa
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/OWNER/REPO/releases/download/vVERSION/loa-VERSION-x86_64-pc-windows-msvc.zip
+    InstallerSha256: SHA256_WINDOWS
+ManifestType: installer
+ManifestVersion: 1.9.0

@@ -1,0 +1,11 @@
+PackageIdentifier: OWNER.loa
+PackageVersion: VERSION
+PackageLocale: ja-JP
+Publisher: OWNER
+PackageName: loa
+License: AGPL-3.0-only
+ShortDescription: LINE Developers コンソールと LINE公式アカウントの作成・更新を1コマンドで行う非公式CLI
+Description: LINEヤフー株式会社とは関係のない非公式ツールです。各サービスの利用規約は利用者が確認してください。agent-browser が別途必要です。
+PackageUrl: https://github.com/OWNER/REPO
+ManifestType: defaultLocale
+ManifestVersion: 1.9.0

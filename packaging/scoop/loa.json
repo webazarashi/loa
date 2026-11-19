@@ -1,0 +1,33 @@
+{
+    "version": "VERSION",
+    "description": "Unofficial CLI for LINE Developers console and LINE Official Account setup",
+    "homepage": "https://github.com/OWNER/REPO",
+    "license": "AGPL-3.0-only",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/OWNER/REPO/releases/download/vVERSION/loa-VERSION-x86_64-pc-windows-msvc.zip",
+            "hash": "SHA256_WINDOWS",
+            "extract_dir": "loa-VERSION-x86_64-pc-windows-msvc"
+        }
+    },
+    "bin": "loa.exe",
+    "notes": [
+        "loa uses agent-browser (not bundled): npm install -g agent-browser, then run: loa setup",
+        "loa is not affiliated with LY Corporation. Check each service's terms before use."
+    ],
+    "checkver": {
+        "github": "https://github.com/OWNER/REPO",
+        "regex": "tag/v([\\d.]+)"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/OWNER/REPO/releases/download/v$version/loa-$version-x86_64-pc-windows-msvc.zip",
+                "extract_dir": "loa-$version-x86_64-pc-windows-msvc",
+                "hash": {
+                    "url": "$url.sha256"
+                }
+            }
+        }
+    }
+}

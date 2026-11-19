@@ -1,0 +1,6 @@
+# winget version manifest template (ManifestVersion 1.9.0)
+PackageIdentifier: OWNER.loa
+PackageVersion: VERSION
+DefaultLocale: ja-JP
+ManifestType: version
+ManifestVersion: 1.9.0

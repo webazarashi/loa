@@ -1,0 +1,1234 @@
+{
+  "$defs": {
+    "Check": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "url_matches": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "url_matches"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "text_contains": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "text_contains"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "exists": {
+              "$ref": "#/$defs/Locator"
+            }
+          },
+          "required": [
+            "exists"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "not_exists": {
+              "$ref": "#/$defs/Locator"
+            }
+          },
+          "required": [
+            "not_exists"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "CheckStep": {
+      "description": "Element locator. Priority: role+name → label → text → placeholder/testid → css (spec 7-2).",
+      "properties": {
+        "checked": {
+          "default": "true",
+          "description": "true / false / on / off, or a `{{variable}}` holding one of them",
+          "type": "string"
+        },
+        "css": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "placeholder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "testid": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "within": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Locator"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Restrict the match to descendants of this element (e.g. a table row)."
+        }
+      },
+      "type": "object"
+    },
+    "ConfirmStep": {
+      "description": "Element locator. Priority: role+name → label → text → placeholder/testid → css (spec 7-2).",
+      "properties": {
+        "css": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "equals": {
+          "type": "string"
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pattern": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "placeholder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "testid": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "within": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Locator"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Restrict the match to descendants of this element (e.g. a table row)."
+        }
+      },
+      "required": [
+        "equals"
+      ],
+      "type": "object"
+    },
+    "FillStep": {
+      "description": "Element locator. Priority: role+name → label → text → placeholder/testid → css (spec 7-2).",
+      "properties": {
+        "css": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "placeholder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "testid": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "value": {
+          "type": "string"
+        },
+        "within": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Locator"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Restrict the match to descendants of this element (e.g. a table row)."
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "type": "object"
+    },
+    "HumanKind": {
+      "description": "Why the task waits for a person.",
+      "enum": [
+        "login",
+        "action"
+      ],
+      "type": "string"
+    },
+    "HumanStep": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HumanKind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "login | action (default action)"
+        },
+        "message": {
+          "type": "string"
+        },
+        "until": {
+          "$ref": "#/$defs/Check"
+        }
+      },
+      "required": [
+        "message",
+        "until"
+      ],
+      "type": "object"
+    },
+    "IfExistsStep": {
+      "description": "Element locator. Priority: role+name → label → text → placeholder/testid → css (spec 7-2).",
+      "properties": {
+        "css": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "else": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "type": "array"
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "placeholder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "testid": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "then": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "type": "array"
+        },
+        "wait_ms": {
+          "description": "Keep looking this long before taking `else` (elements that appear late, like dialogs).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "within": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Locator"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Restrict the match to descendants of this element (e.g. a table row)."
+        }
+      },
+      "type": "object"
+    },
+    "IfSetStep": {
+      "additionalProperties": false,
+      "properties": {
+        "else": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "type": "array"
+        },
+        "then": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "type": "array"
+        },
+        "var": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "var"
+      ],
+      "type": "object"
+    },
+    "InputSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "default": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "required": {
+          "default": false,
+          "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/$defs/InputType"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "type": "object"
+    },
+    "InputType": {
+      "enum": [
+        "string",
+        "url",
+        "file",
+        "bool"
+      ],
+      "type": "string"
+    },
+    "Locator": {
+      "description": "Element locator. Priority: role+name → label → text → placeholder/testid → css (spec 7-2).",
+      "properties": {
+        "css": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "placeholder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "testid": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "within": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Locator"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Restrict the match to descendants of this element (e.g. a table row)."
+        }
+      },
+      "type": "object"
+    },
+    "OutputSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/OutputType"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "type": "object"
+    },
+    "OutputType": {
+      "oneOf": [
+        {
+          "enum": [
+            "string",
+            "list"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "secret",
+          "description": "Stored in the keychain, never logged or printed.",
+          "type": "string"
+        }
+      ]
+    },
+    "PasteStep": {
+      "additionalProperties": false,
+      "properties": {
+        "field_label": {
+          "type": "string"
+        },
+        "instructions": {
+          "type": "string"
+        },
+        "into": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "instructions",
+        "field_label",
+        "into"
+      ],
+      "type": "object"
+    },
+    "ReadListStep": {
+      "additionalProperties": false,
+      "properties": {
+        "into": {
+          "type": "string"
+        },
+        "link_pattern": {
+          "description": "Regex applied to each link's path; `(?<id>...)` or the first group is the item id.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "link_pattern",
+        "into"
+      ],
+      "type": "object"
+    },
+    "ReadStep": {
+      "description": "Element locator. Priority: role+name → label → text → placeholder/testid → css (spec 7-2).",
+      "properties": {
+        "attr": {
+          "description": "text (default) | value | href | attribute name",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "css": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "into": {
+          "type": "string"
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "optional": {
+          "default": false,
+          "description": "When true, a missing element yields an empty value instead of UI_CHANGED.",
+          "type": "boolean"
+        },
+        "pattern": {
+          "description": "Regex; the first capture group (or the whole match) becomes the value.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "placeholder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "testid": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "within": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Locator"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Restrict the match to descendants of this element (e.g. a table row)."
+        }
+      },
+      "required": [
+        "into"
+      ],
+      "type": "object"
+    },
+    "ReadUrlStep": {
+      "additionalProperties": false,
+      "properties": {
+        "into": {
+          "type": "string"
+        },
+        "pattern": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "pattern",
+        "into"
+      ],
+      "type": "object"
+    },
+    "Status": {
+      "enum": [
+        "verified",
+        "provisional"
+      ],
+      "type": "string"
+    },
+    "Step": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Open a URL (must be on the allowed domains).",
+          "properties": {
+            "goto": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "goto"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "If the browser is on a login page, hand over to the person and wait.",
+          "properties": {
+            "require_login": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "require_login"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Wait for the URL to match a glob.",
+          "properties": {
+            "wait_url": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "wait_url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "wait_for": {
+              "$ref": "#/$defs/Locator"
+            }
+          },
+          "required": [
+            "wait_for"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "wait_text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "wait_text"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "click": {
+              "$ref": "#/$defs/Locator"
+            }
+          },
+          "required": [
+            "click"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "fill": {
+              "$ref": "#/$defs/FillStep"
+            }
+          },
+          "required": [
+            "fill"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "select": {
+              "$ref": "#/$defs/ValueStep"
+            }
+          },
+          "required": [
+            "select"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "check": {
+              "$ref": "#/$defs/CheckStep"
+            }
+          },
+          "required": [
+            "check"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "upload": {
+              "$ref": "#/$defs/UploadStep"
+            }
+          },
+          "required": [
+            "upload"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "read": {
+              "$ref": "#/$defs/ReadStep"
+            }
+          },
+          "required": [
+            "read"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "read_secret": {
+              "$ref": "#/$defs/ReadStep"
+            }
+          },
+          "required": [
+            "read_secret"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Capture part of the current URL (e.g. the new channel id).",
+          "properties": {
+            "read_url": {
+              "$ref": "#/$defs/ReadUrlStep"
+            }
+          },
+          "required": [
+            "read_url"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Collect links whose path matches a pattern (resource lists).",
+          "properties": {
+            "read_list": {
+              "$ref": "#/$defs/ReadListStep"
+            }
+          },
+          "required": [
+            "read_list"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Show a message and wait until the person finished (SMS, identity check).",
+          "properties": {
+            "human": {
+              "$ref": "#/$defs/HumanStep"
+            }
+          },
+          "required": [
+            "human"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Terms of service checkbox: first time approved by a person, then automatic.",
+          "properties": {
+            "agree_terms": {
+              "$ref": "#/$defs/TermsStep"
+            }
+          },
+          "required": [
+            "agree_terms"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "if_exists": {
+              "$ref": "#/$defs/IfExistsStep"
+            }
+          },
+          "required": [
+            "if_exists"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "assert": {
+              "$ref": "#/$defs/Check"
+            }
+          },
+          "required": [
+            "assert"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Re-read the target on screen and stop unless it equals the approved value.",
+          "properties": {
+            "confirm_target": {
+              "$ref": "#/$defs/ConfirmStep"
+            }
+          },
+          "required": [
+            "confirm_target"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Ask the person to paste a value that cannot be read automatically.",
+          "properties": {
+            "paste": {
+              "$ref": "#/$defs/PasteStep"
+            }
+          },
+          "required": [
+            "paste"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Stop with LOCKED_BY_REVIEW when the element exists (MINI App under review / published).",
+          "properties": {
+            "locked_if_exists": {
+              "$ref": "#/$defs/Locator"
+            }
+          },
+          "required": [
+            "locked_if_exists"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Run `then` when an input variable is non-empty (optional fields), otherwise `else`.",
+          "properties": {
+            "if_set": {
+              "$ref": "#/$defs/IfSetStep"
+            }
+          },
+          "required": [
+            "if_set"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "TermsStep": {
+      "description": "Element locator. Priority: role+name → label → text → placeholder/testid → css (spec 7-2).",
+      "properties": {
+        "click": {
+          "default": false,
+          "description": "Click instead of check (agreement expressed by a button).",
+          "type": "boolean"
+        },
+        "css": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "link": {
+          "description": "Link to the terms, shown in the dialog.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "placeholder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "terms_id": {
+          "description": "Stable id of the terms type, e.g. `line-developers-agreement`.",
+          "type": "string"
+        },
+        "testid": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text_from": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Locator"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Element containing the terms text; its hash detects changes."
+        },
+        "title": {
+          "description": "Display name shown in the approval dialog.",
+          "type": "string"
+        },
+        "within": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Locator"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Restrict the match to descendants of this element (e.g. a table row)."
+        }
+      },
+      "required": [
+        "terms_id",
+        "title"
+      ],
+      "type": "object"
+    },
+    "UploadStep": {
+      "description": "Element locator. Priority: role+name → label → text → placeholder/testid → css (spec 7-2).",
+      "properties": {
+        "css": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "file": {
+          "type": "string"
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "placeholder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "testid": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "within": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Locator"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Restrict the match to descendants of this element (e.g. a table row)."
+        }
+      },
+      "required": [
+        "file"
+      ],
+      "type": "object"
+    },
+    "ValueStep": {
+      "description": "Element locator. Priority: role+name → label → text → placeholder/testid → css (spec 7-2).",
+      "properties": {
+        "css": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "placeholder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "testid": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "value": {
+          "type": "string"
+        },
+        "within": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Locator"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Restrict the match to descendants of this element (e.g. a table row)."
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "id": {
+      "type": "string"
+    },
+    "inputs": {
+      "additionalProperties": {
+        "$ref": "#/$defs/InputSpec"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "min_loa_version": {
+      "type": "string"
+    },
+    "operation": {
+      "description": "Operation id. Rust checks it equals the operation the command expects.",
+      "type": "string"
+    },
+    "outputs": {
+      "additionalProperties": {
+        "$ref": "#/$defs/OutputSpec"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "status": {
+      "$ref": "#/$defs/Status",
+      "default": "provisional",
+      "description": "`verified` = confirmed on the real screens; `provisional` = selectors not yet confirmed."
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/Step"
+      },
+      "type": "array"
+    },
+    "verify": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Check"
+      },
+      "type": "array"
+    },
+    "version": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "version",
+    "min_loa_version",
+    "operation",
+    "steps"
+  ],
+  "title": "Scenario",
+  "type": "object"
+}

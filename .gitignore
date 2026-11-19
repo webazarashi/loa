@@ -2,3 +2,4 @@ target/
 .cloudflare/
 *.log
 /.env*
+dist/

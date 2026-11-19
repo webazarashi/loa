@@ -1,0 +1,70 @@
+name: release
+
+# Tag vX.Y.Z → build loa for macOS (arm64, x86_64) and Windows (x86_64) and draft a release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  # Baked into the binary: where `loa scenarios update` looks and which key it trusts.
+  LOA_SCENARIO_REPO: ${{ github.repository }}
+  LOA_SCENARIO_PUBKEY: ${{ vars.LOA_SCENARIO_PUBKEY }}
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { os: macos-14, target: aarch64-apple-darwin, archive: tar.gz }
+          - { os: macos-14, target: x86_64-apple-darwin, archive: tar.gz }
+          - { os: windows-2022, target: x86_64-pc-windows-msvc, archive: zip }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: refuse to build without a scenario signing key
+        shell: bash
+        run: test -n "$LOA_SCENARIO_PUBKEY" || { echo "set the LOA_SCENARIO_PUBKEY repository variable"; exit 1; }
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: cargo build --release --locked -p loa-cli --target ${{ matrix.target }}
+      - name: package
+        shell: bash
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          name="loa-${ver}-${{ matrix.target }}"
+          mkdir -p "dist/$name"
+          cp LICENSE README.md "dist/$name/"
+          if [ "${{ matrix.archive }}" = zip ]; then
+            cp "target/${{ matrix.target }}/release/loa.exe" "dist/$name/"
+            (cd dist && 7z a "$name.zip" "$name" >/dev/null)
+            (cd dist && sha256sum "$name.zip" > "$name.zip.sha256")
+          else
+            cp "target/${{ matrix.target }}/release/loa" "dist/$name/"
+            tar -C dist -czf "dist/$name.tar.gz" "$name"
+            (cd dist && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --draft --title "loa $GITHUB_REF_NAME" --notes "OSのコード署名はありません。初回起動の手順は README を参照してください。"
