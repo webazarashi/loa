@@ -10,10 +10,13 @@ outputs:
 steps:
   - goto: "https://developers.line.biz/console/"
   - require_login: true
+  # トップの「作成」で入力欄が開く（ダイアログではない）。開いた後は「作成」ボタンが2つになる
   - click: { role: button, name: "作成" }
-  - wait_for: { label: "プロバイダー名" }
+  - wait_text: "新規プロバイダー作成"
+  # ラベルと入力欄（textarea）はひも付いていない。loa がラベルの隣の入力欄を探す
   - fill: { label: "プロバイダー名", value: "{{name}}" }
-  - click: { role: button, name: "作成", within: { role: dialog } }
+  # 送信ボタンは入力欄の下のフッター（contentinfo）にある
+  - click: { role: button, name: "作成", within: { role: contentinfo } }
   - wait_url: "**/console/provider/*"
   - read_url: { pattern: "/console/provider/(?<id>\\d+)", into: provider_id }
 verify:

@@ -12,28 +12,51 @@ outputs:
   channel_id: { type: string }
   channel_secret: { type: secret }
 steps:
-  - goto: "https://developers.line.biz/console/channel/new?type=line-mini-app&provider={{provider_id}}"
+  # 2026-11-23 確認: 種類は type=miniapp
+  - goto: "https://developers.line.biz/console/channel/new?type=miniapp&provider={{provider_id}}"
   - require_login: true
-  - wait_for: { label: "チャネル名" }
+  - wait_text: "新規チャネル作成"
   - fill: { label: "チャネル名", value: "{{name}}" }
   - fill: { label: "チャネル説明", value: "{{description}}" }
-  - if_exists:
-      label: "メールアドレス"
+  # メールアドレスはアカウントのアドレスが最初から入っている。指定されたときだけ書き換える
+  - if_set:
+      var: email
       then:
         - fill: { label: "メールアドレス", value: "{{email}}" }
+  # 同意・表明保証のチェックボックスは5つ。どれも初回は人が承認する
   - agree_terms:
       terms_id: "line-developers-agreement"
       title: "LINE開発者契約"
-      label: "LINE開発者契約の内容に同意します"
+      role: checkbox
+      name: "LINE開発者契約に同意します。"
       link: "https://terms2.line.me/LINE_Developers_Agreement?lang=ja"
   - agree_terms:
+      terms_id: "line-mini-app-platform-terms"
+      title: "LINEミニアプリプラットフォーム規約"
+      role: checkbox
+      name: "LINEミニアプリプラットフォーム規約に同意します。"
+      link: "https://terms2.line.me/LINE_Developers_MINI_App_JP?country=JP&lang=ja"
+  - agree_terms:
       terms_id: "line-mini-app-policy"
-      title: "LINEミニアプリ ポリシー"
-      label: "LINEミニアプリ ポリシーに同意します"
+      title: "LINEミニアプリポリシー"
+      role: checkbox
+      name: "LINEミニアプリポリシーを遵守します。"
       link: "https://terms2.line.me/LINE_MINI_App?lang=ja"
+  - agree_terms:
+      terms_id: "line-mini-app-region-warranty"
+      title: "提供地域と事業者の所在国・地域が同一であることの表明・保証"
+      role: checkbox
+      name: "LINEミニアプリを提供する地域と、サービス事業主の所在国・地域が同一であることを表明し、保証します。"
+  - agree_terms:
+      terms_id: "line-mini-app-authority-warranty"
+      title: "会社を代表して規約に同意する権限があることの表明・保証"
+      role: checkbox
+      name: "これらの規約に同意すること及びこれらの契約を締結することについて、会社を代表する必要かつ正当な権限を有していることを表明し、保証します。 入力及び操作を行う者が開発受託会社（開発担当企業）の場合は、これらの規約に同意し、これらの規約に基づく契約を締結すること及び以降の必要な操作設定を行うことについてプロバイダーの代理として必要かつ正当な権限を有していることを表明し、保証します。"
   - click: { role: button, name: "作成" }
-  - wait_url: "**/console/channel/*/basics"
-  - read_url: { pattern: "/console/channel/(?<id>\\d+)/", into: channel_id }
+  # 作成後に開くタブは未確認。チャネルID付きのURLに移れば作成済みとみなす（作成画面は /console/channel/new?...）
+  - wait_url: "**/console/channel/*/**"
+  - read_url: { pattern: "/console/channel/(?<id>\\d+)", into: channel_id }
+  - goto: "https://developers.line.biz/console/channel/{{channel_id}}/basics"
   - read_secret: { label: "チャネルシークレット", pattern: "([0-9a-f]{32})", into: channel_secret }
 verify:
   - text_contains: "{{name}}"

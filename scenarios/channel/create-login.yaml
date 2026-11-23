@@ -8,27 +8,34 @@ inputs:
   name: { type: string, required: true }
   description: { type: string, required: true }
   email: { type: string, default: "" }
+  company_country: { type: string, default: "日本" }
 outputs:
   channel_id: { type: string }
   channel_secret: { type: secret }
 steps:
   - goto: "https://developers.line.biz/console/channel/new?type=line-login&provider={{provider_id}}"
   - require_login: true
-  - wait_for: { label: "チャネル名" }
+  - wait_text: "新規チャネル作成"
+  # 2026-11-23 確認: 必須。選択肢の表示名（日本など）で選ぶ
+  - select: { label: "会社・事業者の所在国・地域", value: "{{company_country}}" }
   - fill: { label: "チャネル名", value: "{{name}}" }
   - fill: { label: "チャネル説明", value: "{{description}}" }
-  - check: { label: "ウェブアプリ" }
-  - if_exists:
-      label: "メールアドレス"
+  - check: { role: checkbox, name: "ウェブアプリ" }
+  # メールアドレスはアカウントのアドレスが最初から入っている。指定されたときだけ書き換える
+  - if_set:
+      var: email
       then:
         - fill: { label: "メールアドレス", value: "{{email}}" }
+  # 「2要素認証の必須化」は最初からオンのまま
   - agree_terms:
       terms_id: "line-developers-agreement"
       title: "LINE開発者契約"
-      label: "LINE開発者契約の内容に同意します"
+      role: checkbox
+      name: "LINE開発者契約に同意します。"
       link: "https://terms2.line.me/LINE_Developers_Agreement?lang=ja"
   - click: { role: button, name: "作成" }
-  - wait_url: "**/console/channel/*/basics"
+  # 作成後に開くタブは未確認。チャネルID付きのURLに移れば作成済みとみなす（作成画面は /console/channel/new?...）
+  - wait_url: "**/console/channel/*/**"
   - if_exists:
       role: button
       name: "同意する"
@@ -40,7 +47,8 @@ steps:
             role: button
             name: "同意する"
             click: true
-  - read_url: { pattern: "/console/channel/(?<id>\\d+)/", into: channel_id }
+  - read_url: { pattern: "/console/channel/(?<id>\\d+)", into: channel_id }
+  - goto: "https://developers.line.biz/console/channel/{{channel_id}}/basics"
   - read_secret: { label: "チャネルシークレット", pattern: "([0-9a-f]{32})", into: channel_secret }
 verify:
   - text_contains: "{{name}}"

@@ -202,10 +202,14 @@ class H(BaseHTTPRequestHandler):
         if parts == ["console"]:
             create_label = "新規作成する" if flags.get("broken") else "作成"
             items = "".join(f'<li><a href="/dev/console/provider/{pid}">{esc(p["name"])}</a></li>' for pid, p in STATE["providers"].items())
-            body = f"""<h1>プロバイダー</h1><ul>{items}</ul>
-<button type="button" onclick="document.getElementById('np').showModal()">{create_label}</button>
-<dialog id="np" aria-label="新規プロバイダー作成"><form method="post" action="/dev/console/provider/create">
-<label for="pn">プロバイダー名</label><input id="pn" name="name"><button type="submit">作成</button></form></dialog>"""
+            # Mirrors the real console (2026-11-23): the form is not a dialog, the label is not tied
+            # to its textarea, and the buttons sit in a second contentinfo next to the page footer.
+            body = f"""<h1>プロバイダー</h1><h2>プロバイダー （{len(STATE["providers"])}）</h2><ul>{items}</ul>
+<button type="button" onclick="document.getElementById('np').hidden=false">{create_label}</button>
+<div id="np" hidden><form method="post" action="/dev/console/provider/create"><section><h2>新規プロバイダー作成</h2>
+<div class="kv-field"><label>プロバイダー名 <i></i></label><section><div class="field"><textarea name="name" placeholder="-"></textarea></div></section></div></section>
+<div role="contentinfo"><button type="button" onclick="document.getElementById('np').hidden=true">キャンセル</button><button type="submit">作成</button></div></form></div>
+<div role="contentinfo"><a href="/dev/console/">規約とポリシー</a></div>"""
             return self.send(200, page("コンソール", body))
         if parts == ["console", "provider", "create"] and method == "POST":
             f = self.form()
@@ -232,27 +236,47 @@ class H(BaseHTTPRequestHandler):
         if parts == ["console", "channel", "new"]:
             ty = q.get("type", "")
             pid = q.get("provider", "")
-            if ty not in ("line-login", "line-mini-app"):
+            if ty not in ("line-login", "miniapp"):
                 return self.send(200, page("新規チャネル", "<h1>チャネルの種類を選択</h1>"))
-            extra = '<div><input type="checkbox" id="web" name="web"><label for="web">ウェブアプリ</label></div>' if ty == "line-login" else ""
-            mini_terms = '<div><input type="checkbox" id="mterms" name="mterms" required><label for="mterms">LINEミニアプリ ポリシーに同意します</label></div>' if ty == "line-mini-app" else ""
+            # Mirrors the real form (2026-11-23): bare labels next to textareas, a required company
+            # country select for LINE Login, and several agreement checkboxes for MINI Apps.
+            def field(label, ctrl):
+                return f'<div class="kv-field"><label>{label} <i></i></label><section><div class="field">{ctrl}</div></section></div>'
+            def agree(i, text):
+                return f'<div><input type="checkbox" id="ag{i}" name="ag{i}" required><label for="ag{i}">{text}</label></div>'
+            if ty == "line-login":
+                extra = (field("会社・事業者の所在国・地域", '<select name="country"><option value="-1" disabled selected>未設定</option><option value="1">日本</option><option value="2">台湾</option></select>')
+                         + '<div><input type="checkbox" id="web" name="web"><label for="web">ウェブアプリ</label></div>')
+                agrees = agree(0, "LINE開発者契約に同意します。")
+            else:
+                extra = ""
+                agrees = "".join(agree(i, t) for i, t in enumerate([
+                    "LINE開発者契約に同意します。",
+                    "LINEミニアプリプラットフォーム規約に同意します。",
+                    "LINEミニアプリポリシーを遵守します。",
+                    "LINEミニアプリを提供する地域と、サービス事業主の所在国・地域が同一であることを表明し、保証します。",
+                    "これらの規約に同意すること及びこれらの契約を締結することについて、会社を代表する必要かつ正当な権限を有していることを表明し、保証します。 入力及び操作を行う者が開発受託会社（開発担当企業）の場合は、これらの規約に同意し、これらの規約に基づく契約を締結すること及び以降の必要な操作設定を行うことについてプロバイダーの代理として必要かつ正当な権限を有していることを表明し、保証します。",
+                ]))
             body = f"""<h1>新規チャネル作成</h1><form method="post" action="/dev/console/channel/create">
 <input type="hidden" name="provider" value="{esc(pid)}"><input type="hidden" name="type" value="{esc(ty)}">
-<div><label for="cn">チャネル名</label><input id="cn" name="name" required></div>
-<div><label for="cd">チャネル説明</label><textarea id="cd" name="description"></textarea></div>
 {extra}
-<div><label for="em">メールアドレス</label><input id="em" name="email"></div>
+{field("チャネル名", '<textarea name="name" placeholder="チャネル名を入力してください" required></textarea>')}
+{field("チャネル説明", '<textarea name="description" placeholder="チャネル説明を入力してください"></textarea>')}
+{field("メールアドレス", '<textarea name="email" placeholder="メールアドレスを入力してください">owner@example.com</textarea>')}
 <div id="terms">{esc(STATE["terms_text"])}</div>
-<div><input type="checkbox" id="agree" name="agree" required><label for="agree">LINE開発者契約の内容に同意します</label></div>
-{mini_terms}
+{agrees}
 <button type="submit">作成</button></form>"""
             return self.send(200, page("新規チャネル作成", body))
         if parts == ["console", "channel", "create"] and method == "POST":
             f = self.form()
-            if f.get("agree") != "on":
+            if f.get("ag0") != "on":
                 return self.send(400, page("エラー", "<h1>規約に同意してください</h1>"))
-            cid = rid()
             ty = "login" if f["type"] == "line-login" else "miniapp"
+            if ty == "login" and f.get("country", "-1") == "-1":
+                return self.send(400, page("エラー", "<h1>所在国・地域を選択してください</h1>"))
+            if ty == "miniapp" and any(f.get(f"ag{i}") != "on" for i in range(5)):
+                return self.send(400, page("エラー", "<h1>すべてに同意してください</h1>"))
+            cid = rid()
             ch = {"pid": f["provider"], "name": f["name"], "type": ty, "description": f.get("description", ""),
                   "email": f.get("email", ""), "secret": rhex(), "callbacks": "", "consent": ty != "login",
                   "liff": {}, "webhook": "", "miniapp": {}}

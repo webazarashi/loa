@@ -575,15 +575,19 @@ impl<'a> Runner<'a> {
     fn act(&mut self, l: &Locator, action: &str, arg: Option<String>) -> Result<()> {
         let c: Cmd = match self.target(l) {
             Target::Find { kind, value, name } => {
+                let label = (kind == "label").then(|| value.clone());
                 let mut c = vec!["find".into(), kind, value, action.into()];
-                if let Some(a) = arg {
-                    c.push(a);
+                if let Some(a) = &arg {
+                    c.push(a.clone());
                 }
                 if let Some(n) = name {
                     c.push("--name".into());
                     c.push(n);
                 }
                 c.push("--exact".into());
+                if let Some(label) = label {
+                    return self.retry_label(c, &label, action, arg).map(|_| ());
+                }
                 c
             }
             Target::Sel(s) => {
@@ -615,6 +619,45 @@ impl<'a> Runner<'a> {
         }
     }
 
+    /// `find label` only reaches controls tied to their label; otherwise use the single control
+    /// next to a bare label with that exact text.
+    fn retry_label(
+        &mut self,
+        c: Cmd,
+        label: &str,
+        action: &str,
+        arg: Option<String>,
+    ) -> Result<Value> {
+        let deadline = Instant::now() + self.wait_timeout;
+        loop {
+            match self.browser.run(c.clone()) {
+                Ok(v) => return Ok(v),
+                Err(e) if e.kind == BrowserErrorKind::NotFound => {}
+                Err(e) => return Err(to_loa_error(e)),
+            }
+            let v = self.eval(&field_js(label))?;
+            match v.get("count").and_then(Value::as_u64).unwrap_or(0) {
+                1 => {
+                    let sel = v.get("sel").and_then(Value::as_str).unwrap_or_default();
+                    let mut by_sel = vec![action.to_string(), sel.to_string()];
+                    by_sel.extend(arg);
+                    return self.browser.run(by_sel).map_err(to_loa_error);
+                }
+                0 if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(500)),
+                0 => {
+                    return Err(LoaError::ui_changed(format!(
+                        "要素が見つかりません: label={label}"
+                    )));
+                }
+                n => {
+                    return Err(LoaError::ui_changed(format!(
+                        "「{label}」の入力欄が {n} 個見つかり特定できません"
+                    )));
+                }
+            }
+        }
+    }
+
     /// Selector usable by commands that `find` does not support (select, upload, get, uncheck).
     fn selector(&mut self, l: &Locator) -> Result<String> {
         if l.within.is_none() {
@@ -634,7 +677,20 @@ impl<'a> Runner<'a> {
     /// Resolve a role / label / text locator to a unique `@eN` ref through the snapshot.
     fn resolve_ref(&mut self, l: &Locator) -> Result<String> {
         let deadline = Instant::now() + self.wait_timeout;
+        let bare_label = match (&l.label, &l.role, &l.within) {
+            (Some(label), None, None) => Some(label.clone()),
+            _ => None,
+        };
         loop {
+            // A select or input next to a label not tied to it has no accessible name to match.
+            if let Some(label) = &bare_label {
+                let v = self.eval(&field_js(label))?;
+                if v.get("count").and_then(Value::as_u64) == Some(1)
+                    && let Some(sel) = v.get("sel").and_then(Value::as_str)
+                {
+                    return Ok(sel.to_string());
+                }
+            }
             let snap = self.browser.snapshot().map_err(to_loa_error)?;
             let hits = resolve_in(&snap, l)?;
             match hits.len() {
@@ -666,6 +722,7 @@ impl<'a> Runner<'a> {
         }
         match self.target(l) {
             Target::Find { kind, value, name } => {
+                let label = (kind == "label").then(|| value.clone());
                 let mut c: Cmd = vec!["find".into(), kind, value, "text".into()];
                 if let Some(n) = name {
                     c.push("--name".into());
@@ -674,7 +731,13 @@ impl<'a> Runner<'a> {
                 c.push("--exact".into());
                 match self.browser.run(c) {
                     Ok(_) => Ok(true),
-                    Err(e) if e.kind == BrowserErrorKind::NotFound => Ok(false),
+                    Err(e) if e.kind == BrowserErrorKind::NotFound => match label {
+                        Some(label) => {
+                            let v = self.eval(&field_js(&label))?;
+                            Ok(v.get("count").and_then(Value::as_u64).unwrap_or(0) > 0)
+                        }
+                        None => Ok(false),
+                    },
                     Err(e) if e.message.contains("elements") => Ok(true),
                     Err(e) => Err(to_loa_error(e)),
                 }
@@ -813,26 +876,26 @@ impl<'a> Runner<'a> {
 
 /// Refs of nodes matching the locator in a snapshot (exact names, optional `within`).
 pub fn resolve_in(snap: &Snapshot, l: &Locator) -> Result<Vec<String>> {
-    let scope = match &l.within {
-        Some(w) => {
-            let parents = matching_nodes(snap, w, None);
-            match parents.len() {
-                1 => Some(parents[0]),
-                0 => return Ok(Vec::new()),
-                n => {
-                    return Err(LoaError::ui_changed(format!(
-                        "範囲指定 {} に {n} 個の要素が当てはまります",
-                        w.describe()
-                    )));
-                }
+    let refs = |scope| -> Vec<String> {
+        matching_nodes(snap, l, scope)
+            .into_iter()
+            .filter_map(|n| n.reference.clone())
+            .collect()
+    };
+    let Some(w) = &l.within else {
+        return Ok(refs(None));
+    };
+    // Several scopes may match (a page footer and a dialog footer are both `contentinfo`); the
+    // target counts as long as it is found in exactly one of them.
+    let mut hits = Vec::new();
+    for scope in matching_nodes(snap, w, None) {
+        for r in refs(Some(scope)) {
+            if !hits.contains(&r) {
+                hits.push(r);
             }
         }
-        None => None,
-    };
-    Ok(matching_nodes(snap, l, scope)
-        .into_iter()
-        .filter_map(|n| n.reference.clone())
-        .collect())
+    }
+    Ok(hits)
 }
 
 fn matching_nodes<'a>(
@@ -938,6 +1001,37 @@ fn text_in_scope_js(text: &str, scope: Option<&str>) -> String {
 }
 
 /// Fixed script: value displayed next to a label (label[for], dl/dt/dd, tables, label/value divs).
+/// Form control next to a `<label>` that is not tied to it (the console's `kv-field` groups put a
+/// bare label and the input side by side). The unique match is tagged so a CSS selector can reach
+/// it; several matches or none report their count and tag nothing.
+fn field_js(label: &str) -> String {
+    let l = serde_json::to_string(label).unwrap_or_else(|_| "\"\"".into());
+    let token = crate::util::random_hex(6);
+    format!(
+        r#"(() => {{
+  const L = {l};
+  const norm = s => (s || '').replace(/\s+/g, ' ').trim();
+  const visible = e => !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length) && getComputedStyle(e).visibility !== 'hidden';
+  const CTRL = 'input:not([type=hidden]):not([type=search]), textarea, select, [contenteditable="true"]';
+  const found = new Set();
+  for (const lab of document.querySelectorAll('label')) {{
+    if (!visible(lab) || norm(lab.innerText) !== L) continue;
+    let box = lab.parentElement;
+    for (let depth = 0; depth < 4 && box; depth++, box = box.parentElement) {{
+      const ctrls = [...box.querySelectorAll(CTRL)].filter(visible);
+      if (ctrls.length === 1) {{ found.add(ctrls[0]); break; }}
+      if (ctrls.length > 1) break;
+    }}
+  }}
+  for (const e of document.querySelectorAll('[data-loa-field]')) e.removeAttribute('data-loa-field');
+  if (found.size !== 1) return {{ count: found.size }};
+  const el = [...found][0];
+  el.setAttribute('data-loa-field', '{token}');
+  return {{ count: 1, sel: '[data-loa-field="{token}"]' }};
+}})()"#
+    )
+}
+
 fn label_js(label: &str, scope: Option<&str>) -> String {
     let l = serde_json::to_string(label).unwrap_or_else(|_| "\"\"".into());
     let sc = scope_js(scope);
@@ -1252,6 +1346,63 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(resolve_in(&snap, &l).unwrap(), vec!["e6".to_string()]);
+    }
+
+    #[test]
+    fn scope_matching_twice_is_fine_when_one_holds_the_target() {
+        // Real console: page footer and the provider form's footer are both contentinfo.
+        let snap = Snapshot::parse(
+            "- button \"作成\" [ref=e1]\n- contentinfo\n  - button \"キャンセル\" [ref=e2]\n  - button \"作成\" [ref=e3]\n- contentinfo\n  - link \"規約とポリシー\" [ref=e4]",
+        );
+        let l = Locator {
+            role: Some("button".into()),
+            name: Some("作成".into()),
+            within: Some(Box::new(Locator {
+                role: Some("contentinfo".into()),
+                ..Default::default()
+            })),
+            ..Default::default()
+        };
+        assert_eq!(resolve_in(&snap, &l).unwrap(), vec!["e3".to_string()]);
+    }
+
+    #[cfg(not(feature = "test-hooks"))]
+    #[test]
+    fn fill_falls_back_to_the_field_next_to_a_bare_label() {
+        let sc = scenario(
+            "provider.create",
+            "inputs:\n  name: { type: string, required: true }\nsteps:\n  - fill: { label: \"プロバイダー名\", value: \"{{name}}\" }\n",
+        );
+        let mut b = FakeBrowser {
+            current_url: "https://developers.line.biz/console/".into(),
+            ..Default::default()
+        };
+        // find label → not found (label not tied), eval → one field tagged, fill → ok
+        b.responses.push_back(Err(crate::browser::BrowserError {
+            kind: BrowserErrorKind::NotFound,
+            index: Some(0),
+            message: "no element".into(),
+        }));
+        b.responses.push_back(Ok(
+            json!({"result": {"count": 1, "sel": "[data-loa-field=\"ab\"]"}}),
+        ));
+        let t = terms();
+        let r = Runner::new(
+            &mut b,
+            &NoHumanGate,
+            &t,
+            OpKind::ProviderCreate,
+            std::env::temp_dir(),
+        );
+        let vars: Vars = [("name".to_string(), "loa-selftest".to_string())]
+            .into_iter()
+            .collect();
+        r.run(&sc, &vars).unwrap();
+        let want: Vec<String> = ["fill", "[data-loa-field=\"ab\"]", "loa-selftest"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        assert!(b.calls.contains(&want), "{:?}", b.calls);
     }
 
     #[test]
