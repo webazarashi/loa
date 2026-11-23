@@ -8,5 +8,6 @@ outputs:
 steps:
   - goto: "https://manager.line.biz/"
   - require_login: true
-  - wait_text: "アカウント"
+  # 見出し「アカウントリスト」は一覧より先に出る。件数付きの「アカウント(8)」は読み込み後に出る
+  - wait_text: "アカウント("
   - read_list: { link_pattern: "/account/(?<id>@[A-Za-z0-9._-]+)/?$", into: accounts }

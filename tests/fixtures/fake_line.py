@@ -219,7 +219,7 @@ class H(BaseHTTPRequestHandler):
                 return self.send(404, page("404", "<h1>なし</h1>"))
             if len(parts) == 3:
                 chans = "".join(
-                    f'<li><a href="/dev/console/channel/{cid}/basics">{esc(c["name"])} <span>{TYPE_LABEL[c["type"]]}</span></a></li>'
+                    f'<li><a href="/dev/console/channel/{cid}/basics"><span class="dc-role-badge">Admin</span><h3 class="title">{esc(c["name"])}</h3><span>{TYPE_LABEL[c["type"]]}</span><div class="dc-status-inner">開発中</div></a></li>'
                     for cid, c in STATE["channels"].items() if c["pid"] == pid)
                 body = f'<h1>{esc(p["name"])}</h1><h2>チャネル</h2><ul>{chans}</ul><a href="/dev/console/channel/new?provider={pid}">新規チャネル作成</a> <a href="/dev/console/provider/{pid}/setting">設定</a>'
                 return self.send(200, page(p["name"], body))
@@ -325,7 +325,7 @@ class H(BaseHTTPRequestHandler):
         parts = [urllib.parse.unquote(p) for p in path.split("/") if p]
         if not parts:
             items = "".join(f'<li><a href="/oam/account/{oid}/">{esc(o["name"])}</a></li>' for oid, o in STATE["oas"].items())
-            return self.send(200, page("アカウントリスト", f"<h1>アカウントリスト</h1><ul>{items}</ul>"))
+            return self.send(200, page("アカウントリスト", f"<h1>アカウントリスト</h1><h2>アカウント({len(STATE['oas'])})</h2><ul>{items}</ul>"))
         if parts[0] != "account" or len(parts) < 2 or parts[1] not in STATE["oas"]:
             return self.send(404, page("404", "<h1>なし</h1>"))
         oid = parts[1]

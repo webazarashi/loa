@@ -138,6 +138,8 @@ pub struct Ctx<'a> {
     pub gate: &'a dyn HumanGate,
     pub dry_run: bool,
     pub cwd: std::path::PathBuf,
+    /// Task this context runs in; recorded as the business-lock holder so `BUSY` can point to it.
+    pub task_id: Option<String>,
     catalog: Option<Catalog>,
     terms: Option<TermsStore>,
     browser: Option<Box<dyn Browser>>,
@@ -162,6 +164,7 @@ impl<'a> Ctx<'a> {
             gate,
             dry_run: false,
             cwd: std::env::current_dir().unwrap_or_default(),
+            task_id: None,
             catalog: None,
             terms: None,
             browser: None,
@@ -194,7 +197,7 @@ impl<'a> Ctx<'a> {
 
     pub fn browser(&mut self) -> Result<&mut dyn Browser> {
         if self.browser.is_none() {
-            crate::task::business_lock(&self.paths, &self.business_id)?;
+            crate::task::business_lock(&self.paths, &self.business_id, self.task_id.as_deref())?;
             let bin = crate::browser::resolve_binary(self.config.agent_browser_path.as_deref())?;
             crate::browser::check_version(&bin)?;
             self.paths.ensure()?;

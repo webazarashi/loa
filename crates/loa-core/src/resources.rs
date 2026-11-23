@@ -49,6 +49,9 @@ pub struct ChannelRec {
     /// Values last applied by `loa apply` (field → value), used to keep apply idempotent.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub applied: BTreeMap<String, String>,
+    /// Name shown in the console, set when several channels share it and the map key is the id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -56,6 +59,10 @@ pub struct ProviderRec {
     pub id: String,
     #[serde(default)]
     pub channels: BTreeMap<String, ChannelRec>,
+    /// Channel names used by more than one channel in the console (name → ids). Such channels are
+    /// keyed by id in `channels` and can only be addressed by id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub ambiguous: BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
@@ -132,6 +139,13 @@ impl Business {
                 && p.id != want
             {
                 continue;
+            }
+            if let Some(ids) = p.ambiguous.get(key) {
+                return Err(LoaError::usage(format!(
+                    "プロバイダー {pname} にはチャネル名 {key} が {} 個あります（ID: {}）。ID で指定してください",
+                    ids.len(),
+                    ids.join(", ")
+                )));
             }
             for (cname, c) in &p.channels {
                 if cname == key || c.id == key {
@@ -264,6 +278,30 @@ mod tests {
             "20"
         );
         assert!(b.find_channel("nope", None).unwrap().is_none());
+    }
+
+    #[test]
+    fn shared_channel_name_needs_an_id() {
+        let mut b = biz();
+        let p = b.providers.get_mut("acme").unwrap();
+        for id in ["30", "31"] {
+            p.channels.insert(
+                id.into(),
+                ChannelRec {
+                    id: id.into(),
+                    display_name: Some("dup".into()),
+                    ..Default::default()
+                },
+            );
+        }
+        p.ambiguous
+            .insert("dup".into(), vec!["30".into(), "31".into()]);
+        let e = b.find_channel("dup", Some("acme")).unwrap_err();
+        assert!(e.message.contains("30, 31"), "{}", e.message);
+        assert_eq!(
+            b.find_channel("31", Some("acme")).unwrap().unwrap().rec.id,
+            "31"
+        );
     }
 
     #[test]

@@ -47,6 +47,9 @@ impl BrowserError {
             || lower.contains("elements have role")
         {
             BrowserErrorKind::NotFound
+        } else if lower.contains("no response came back") {
+            // The daemon got the command but its reply was lost; the browser itself is running.
+            BrowserErrorKind::Other
         } else if lower.contains("timed out") || lower.contains("timeout") {
             BrowserErrorKind::Timeout
         } else if lower.contains("launch") || lower.contains("daemon") {
@@ -447,6 +450,17 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(e.kind, BrowserErrorKind::Timeout);
+    }
+
+    #[test]
+    fn lost_reply_is_not_a_launch_failure() {
+        let e = parse_batch_output(
+            "",
+            "Failed to read: Resource temporarily unavailable (os error 35) (the command reached the daemon but no response came back; it may or may not have run, so it was not retried)",
+            1,
+        )
+        .unwrap_err();
+        assert_eq!(e.kind, BrowserErrorKind::Other);
     }
 
     #[test]

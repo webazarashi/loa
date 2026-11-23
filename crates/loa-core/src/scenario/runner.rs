@@ -14,6 +14,9 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use zeroize::Zeroizing;
 
+/// Consecutive unanswered URL checks tolerated while waiting for a login (polled every 2 s).
+const LOGIN_POLL_FAILURES: u32 = 15;
+
 #[derive(Default)]
 pub struct Outputs {
     pub values: BTreeMap<String, Value>,
@@ -367,16 +370,37 @@ impl<'a> Runner<'a> {
         let timeout = self.human_timeout;
         let allow = self.allow.clone();
         let browser = &mut *self.browser;
+        let mut failures = 0u32;
+        let mut seen = String::new();
         gate.wait_human(
             HumanKind::Login,
             "ブラウザでLINEビジネスIDにログインしてください",
             timeout,
-            &mut || {
-                let u = browser.url().map_err(to_loa_error)?;
-                Ok(!u.is_empty()
-                    && !is_login_url(&u)
-                    && allow.check(&u).is_ok()
-                    && u != "about:blank")
+            &mut || match browser.url() {
+                Ok(u) => {
+                    failures = 0;
+                    // The worker log records which pages the login passed through (no query).
+                    let page = u.split(['?', '#']).next().unwrap_or("");
+                    if page != seen {
+                        eprintln!("{} login page: {page}", crate::util::now_rfc3339());
+                        seen = page.to_string();
+                    }
+                    Ok(!u.is_empty()
+                        && !is_login_url(&u)
+                        && allow.check(&u).is_ok()
+                        && u != "about:blank")
+                }
+                // While the person is logging in, pages navigate under the daemon and a reply can
+                // be lost. Keep waiting unless the browser stays unreachable.
+                Err(e) if failures < LOGIN_POLL_FAILURES => {
+                    failures += 1;
+                    eprintln!(
+                        "{} login poll failed ({failures}/{LOGIN_POLL_FAILURES}): {e}",
+                        crate::util::now_rfc3339()
+                    );
+                    Ok(false)
+                }
+                Err(e) => Err(to_loa_error(e)),
             },
         )?;
         if let Some(g) = self.last_goto.clone() {
@@ -965,6 +989,7 @@ fn list_js(pattern: &str) -> String {
     format!(
         r#"(() => {{
   const re = new RegExp({p});
+  const clean = s => (s || '').replace(/\s+/g, ' ').trim();
   const out = []; const seen = new Set();
   for (const a of document.querySelectorAll('a[href]')) {{
     const u = new URL(a.getAttribute('href'), location.href);
@@ -973,7 +998,15 @@ fn list_js(pattern: &str) -> String {
     const id = (m.groups && m.groups.id) || m[1] || m[0];
     if (seen.has(id)) continue;
     seen.add(id);
-    out.push({{ id, name: (a.innerText || '').replace(/\s+/g, ' ').trim(), href: u.pathname }});
+    // Cards put the name in a heading next to badges (role, type, status); those are `parts`.
+    const h = a.querySelector('h1,h2,h3,h4,h5,h6,[role="heading"]');
+    const parts = [];
+    for (const e of a.querySelectorAll('*')) {{
+      if (e.children.length) continue;
+      const t = clean(e.innerText);
+      if (t && !parts.includes(t)) parts.push(t);
+    }}
+    out.push({{ id, name: clean(h ? h.innerText : a.innerText), heading: !!h, parts: parts.slice(0, 12), href: u.pathname }});
   }}
   return out;
 }})()"#
@@ -1057,6 +1090,92 @@ mod tests {
         );
         let e = r.run(&sc, &Vars::new()).err().unwrap();
         assert_eq!(e.code, Code::LoginRequired);
+    }
+
+    /// Answers `get url` with the login page until the gate starts polling, then fails
+    /// `errors` times (lost daemon replies), then reports the console.
+    struct FlakyLogin {
+        polling: std::rc::Rc<std::cell::Cell<bool>>,
+        errors: u32,
+    }
+
+    impl Browser for FlakyLogin {
+        fn batch(&mut self, cmds: Vec<Cmd>) -> crate::browser::BResult<Vec<Value>> {
+            let mut out = Vec::new();
+            for c in cmds {
+                if c.first().map(String::as_str) != Some("get") {
+                    out.push(json!({}));
+                    continue;
+                }
+                let url = if !self.polling.get() {
+                    "https://account.line.biz/login?x=1"
+                } else if self.errors > 0 {
+                    self.errors -= 1;
+                    return Err(crate::browser::BrowserError::other(
+                        "the command reached the daemon but no response came back",
+                    ));
+                } else {
+                    "https://developers.line.biz/console/"
+                };
+                out.push(json!({ "url": url }));
+            }
+            Ok(out)
+        }
+        fn close(&mut self) -> crate::browser::BResult<()> {
+            Ok(())
+        }
+        fn forget_state(&mut self) -> crate::browser::BResult<()> {
+            Ok(())
+        }
+    }
+
+    struct PollGate(std::rc::Rc<std::cell::Cell<bool>>);
+
+    impl HumanGate for PollGate {
+        fn approve(&self, _req: &ApprovalRequest) -> Result<bool> {
+            Ok(false)
+        }
+        fn paste(&self, _req: &PasteRequest) -> Result<Zeroizing<String>> {
+            Err(LoaError::other("no paste"))
+        }
+        fn wait_human(
+            &self,
+            kind: HumanKind,
+            hint: &str,
+            _timeout: Duration,
+            done: &mut crate::gate::DoneCheck<'_>,
+        ) -> Result<()> {
+            self.0.set(true);
+            for _ in 0..50 {
+                if done()? {
+                    return Ok(());
+                }
+            }
+            Err(LoaError::new(kind.code(), hint.to_string()))
+        }
+    }
+
+    fn login_with_lost_replies(errors: u32) -> Result<()> {
+        let sc = scenario(
+            "channel.get",
+            "steps:\n  - goto: \"https://developers.line.biz/console/\"\n  - require_login: true\n",
+        );
+        let polling = std::rc::Rc::new(std::cell::Cell::new(false));
+        let mut b = FlakyLogin {
+            polling: polling.clone(),
+            errors,
+        };
+        let gate = PollGate(polling);
+        let t = terms();
+        let r = Runner::new(&mut b, &gate, &t, OpKind::ChannelGet, std::env::temp_dir());
+        r.run(&sc, &Vars::new()).map(|_| ())
+    }
+
+    #[cfg(not(feature = "test-hooks"))]
+    #[test]
+    fn login_wait_survives_lost_replies() {
+        login_with_lost_replies(3).unwrap();
+        assert!(login_with_lost_replies(LOGIN_POLL_FAILURES + 1).is_err());
     }
 
     #[cfg(not(feature = "test-hooks"))]

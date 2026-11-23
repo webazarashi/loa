@@ -10,6 +10,7 @@ use crate::secrets::SecretRef;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct CreateArgs {
@@ -53,8 +54,19 @@ fn parse_type(s: &str) -> Result<ChannelType> {
     }
 }
 
-/// (provider name, provider id, [(channel name, channel id)])
-pub type Listing = (String, String, Vec<(String, String)>);
+/// A channel card on the provider page.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Card {
+    pub id: String,
+    pub name: String,
+    pub ty: ChannelType,
+}
+
+pub struct Listing {
+    pub provider: String,
+    pub provider_id: String,
+    pub cards: Vec<Card>,
+}
 
 /// Channels of a provider from the console; refreshes the local map.
 pub fn fetch(ctx: &mut Ctx<'_>, provider_key: &str) -> Result<Listing> {
@@ -64,18 +76,14 @@ pub fn fetch(ctx: &mut Ctx<'_>, provider_key: &str) -> Result<Listing> {
         OpKind::ChannelList,
         vars(&[("provider_id", &pid)]),
     )?;
-    let items: Vec<(String, String)> = out
+    let cards: Vec<Card> = out
         .values
         .get("channels")
         .and_then(Value::as_array)
         .map(|a| {
             a.iter()
-                .filter_map(|v| {
-                    Some((
-                        v.get("id")?.as_str()?.to_string(),
-                        v.get("name")?.as_str()?.trim().to_string(),
-                    ))
-                })
+                .filter_map(card)
+                .filter(|c| !c.name.is_empty())
                 .collect()
         })
         .unwrap_or_default();
@@ -83,37 +91,48 @@ pub fn fetch(ctx: &mut Ctx<'_>, provider_key: &str) -> Result<Listing> {
     let biz = res.business(&ctx.business_id);
     let prov = biz.providers.entry(pname.clone()).or_default();
     prov.id = pid.clone();
-    for (id, raw_name) in &items {
-        let (name, ty) = split_type(raw_name);
+    // The console allows several channels with one name; those are keyed by id.
+    let mut by_name: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    for c in &cards {
+        by_name.entry(&c.name).or_default().push(c.id.clone());
+    }
+    for c in &cards {
+        let shared = by_name[c.name.as_str()].len() > 1;
+        let key = if shared { c.id.clone() } else { c.name.clone() };
         let existing = prov
             .channels
             .iter()
-            .find(|(_, c)| &c.id == id)
-            .map(|(n, c)| (n.clone(), c.clone()));
+            .find(|(_, r)| r.id == c.id)
+            .map(|(n, r)| (n.clone(), r.clone()));
         let mut rec = existing
             .as_ref()
-            .map(|(_, c)| c.clone())
+            .map(|(_, r)| r.clone())
             .unwrap_or_default();
-        rec.id = id.clone();
-        if ty != ChannelType::Unknown {
-            rec.ty = ty;
+        rec.id = c.id.clone();
+        if c.ty != ChannelType::Unknown {
+            rec.ty = c.ty;
         }
+        rec.display_name = shared.then(|| c.name.clone());
         if let Some((old, _)) = existing
-            && old != name
+            && old != key
         {
             prov.channels.remove(&old);
         }
-        prov.channels.insert(name, rec);
+        prov.channels.insert(key, rec);
     }
     // Channels deleted in the console disappear from the map. An empty listing is not trusted
     // (a broken list scenario would otherwise make `ensure` create duplicates).
-    let stale_kept = if items.is_empty() {
+    let stale_kept = if cards.is_empty() {
         !prov.channels.is_empty()
     } else {
-        let live: std::collections::HashSet<&str> =
-            items.iter().map(|(id, _)| id.as_str()).collect();
+        let live: std::collections::HashSet<&str> = cards.iter().map(|c| c.id.as_str()).collect();
         prov.channels
             .retain(|_, c| c.id.is_empty() || live.contains(c.id.as_str()));
+        prov.ambiguous = by_name
+            .into_iter()
+            .filter(|(_, ids)| ids.len() > 1)
+            .map(|(n, ids)| (n.to_string(), ids))
+            .collect();
         false
     };
     ctx.save_resources(&res)?;
@@ -122,21 +141,57 @@ pub fn fetch(ctx: &mut Ctx<'_>, provider_key: &str) -> Result<Listing> {
             "コンソールでプロバイダー {pname} のチャネルを読み取れませんでした。手元の対応表のまま進めます"
         ));
     }
-    Ok((pname, pid, items))
+    Ok(Listing {
+        provider: pname,
+        provider_id: pid,
+        cards,
+    })
 }
 
-/// Channel cards show the type next to the name; strip it if present.
+const TYPE_LABELS: [(&str, ChannelType); 6] = [
+    ("Messaging API", ChannelType::Messaging),
+    ("LINEログイン", ChannelType::Login),
+    ("LINE Login", ChannelType::Login),
+    ("LINEミニアプリ", ChannelType::Miniapp),
+    ("LINE MINI App", ChannelType::Miniapp),
+    ("ミニアプリ", ChannelType::Miniapp),
+];
+
+/// One channel card from `read_list`. The console card holds the name in a heading and the type
+/// as a separate badge among `parts`.
+fn card(v: &Value) -> Option<Card> {
+    let id = v.get("id")?.as_str()?.to_string();
+    let name = v.get("name")?.as_str()?.trim();
+    let badge = v
+        .get("parts")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .find_map(|p| {
+            TYPE_LABELS
+                .iter()
+                .find(|(label, _)| p.trim() == *label)
+                .map(|(_, ty)| *ty)
+        });
+    // Without a heading the name is the whole link text, which also holds the type label.
+    let from_heading = v.get("heading").and_then(Value::as_bool).unwrap_or(false);
+    let (name, split_ty) = if from_heading {
+        (name.to_string(), ChannelType::Unknown)
+    } else {
+        split_type(name)
+    };
+    Some(Card {
+        id,
+        name,
+        ty: badge.unwrap_or(split_ty),
+    })
+}
+
+/// Older cards put the type in the same text as the name; strip it if present.
 fn split_type(raw: &str) -> (String, ChannelType) {
-    const TYPES: [(&str, ChannelType); 6] = [
-        ("Messaging API", ChannelType::Messaging),
-        ("LINEログイン", ChannelType::Login),
-        ("LINE Login", ChannelType::Login),
-        ("LINEミニアプリ", ChannelType::Miniapp),
-        ("LINE MINI App", ChannelType::Miniapp),
-        ("ミニアプリ", ChannelType::Miniapp),
-    ];
     let s = raw.trim();
-    for (label, ty) in TYPES {
+    for (label, ty) in TYPE_LABELS {
         if let Some(rest) = s.strip_suffix(label) {
             return (rest.trim().to_string(), ty);
         }
@@ -148,18 +203,42 @@ fn split_type(raw: &str) -> (String, ChannelType) {
 }
 
 pub fn list(ctx: &mut Ctx<'_>, provider_key: &str) -> Result<Envelope> {
-    let (pname, _, _) = fetch(ctx, provider_key)?;
+    let l = fetch(ctx, provider_key)?;
+    if l.cards.is_empty() {
+        // Listing unreadable: fall back to the local map (fetch already warned).
+        let res = ctx.resources()?;
+        let chans: Vec<Value> = res
+            .business_ref(&ctx.business_id)
+            .and_then(|b| b.providers.get(&l.provider))
+            .map(|p| {
+                p.channels
+                    .iter()
+                    .map(|(n, c)| {
+                        let name = c.display_name.as_deref().unwrap_or(n);
+                        json!({"id": c.id, "name": name, "type": c.ty.as_str()})
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        return Ok(Envelope::new("channel", "listed", Value::Array(chans)));
+    }
     let res = ctx.resources()?;
-    let chans: Vec<Value> = res
+    if let Some(p) = res
         .business_ref(&ctx.business_id)
-        .and_then(|b| b.providers.get(&pname))
-        .map(|p| {
-            p.channels
-                .iter()
-                .map(|(n, c)| json!({"id": c.id, "name": n, "type": c.ty.as_str()}))
-                .collect()
-        })
-        .unwrap_or_default();
+        .and_then(|b| b.providers.get(&l.provider))
+    {
+        for (name, ids) in &p.ambiguous {
+            ctx.warnings.push(format!(
+                "チャネル名 {name} は複数あります（ID: {}）。これらのチャネルは ID で指定してください",
+                ids.join(", ")
+            ));
+        }
+    }
+    let chans = l
+        .cards
+        .iter()
+        .map(|c| json!({"id": c.id, "name": c.name, "type": c.ty.as_str()}))
+        .collect();
     Ok(Envelope::new("channel", "listed", Value::Array(chans)))
 }
 
@@ -225,8 +304,16 @@ pub fn create(ctx: &mut Ctx<'_>, a: &CreateArgs, ensure: bool) -> Result<Envelop
             )));
         }
     }
-    let (pname, pid, _) = fetch(ctx, &a.provider)?;
-    if let Ok(hit) = ctx.find_channel(&a.name, Some(&pname)) {
+    let l = fetch(ctx, &a.provider)?;
+    let (pname, pid) = (l.provider, l.provider_id);
+    // Ambiguous names are an error here: `ensure` must not add yet another channel of that name.
+    let found = ctx
+        .resources()?
+        .business_ref(&ctx.business_id)
+        .map(|b| b.find_channel(&a.name, Some(&pname)))
+        .transpose()?
+        .flatten();
+    if let Some(hit) = found {
         if !ensure {
             return Err(LoaError::usage(format!(
                 "チャネル {} は既にあります（ID {}）",
@@ -437,7 +524,10 @@ pub fn remove(ctx: &mut Ctx<'_>, key: &str, provider: Option<&str>) -> Result<En
     ctx.scenario(
         "channel.delete",
         OpKind::ChannelDelete,
-        vars(&[("channel_id", &hit.rec.id), ("name", &hit.name)]),
+        vars(&[
+            ("channel_id", &hit.rec.id),
+            ("name", hit.rec.display_name.as_deref().unwrap_or(&hit.name)),
+        ]),
     )?;
     let mut res = ctx.resources()?;
     res.business(&ctx.business_id)
@@ -474,5 +564,34 @@ mod tests {
             ("acme".into(), ChannelType::Login)
         );
         assert_eq!(split_type("plain"), ("plain".into(), ChannelType::Unknown));
+    }
+
+    #[test]
+    fn console_card_uses_heading_and_type_badge() {
+        // Shape of a channel card on the provider page (2026-11-21).
+        let v = serde_json::json!({
+            "id": "2012676868",
+            "name": "ASSISTAND",
+            "heading": true,
+            "parts": ["Admin", "ASSISTAND", "LINEミニアプリ", "未認証"],
+        });
+        assert_eq!(
+            card(&v),
+            Some(Card {
+                id: "2012676868".into(),
+                name: "ASSISTAND".into(),
+                ty: ChannelType::Miniapp,
+            })
+        );
+        let v = serde_json::json!({
+            "id": "1", "name": "デモ：ASSISTAND", "heading": true, "parts": ["Admin", "デモ：ASSISTAND", "Messaging API"],
+        });
+        assert_eq!(card(&v).unwrap().ty, ChannelType::Messaging);
+        // A card without a heading: the link text holds name and type.
+        let v = serde_json::json!({
+            "id": "2", "name": "acme LINEログイン", "heading": false, "parts": ["acme", "LINEログイン"],
+        });
+        let c = card(&v).unwrap();
+        assert_eq!((c.name.as_str(), c.ty), ("acme", ChannelType::Login));
     }
 }

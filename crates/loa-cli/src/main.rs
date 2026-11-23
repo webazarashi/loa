@@ -390,6 +390,7 @@ fn run_task(p: &Paths, id: &str) -> Outcome {
     );
     ctx.dry_run = req.dry_run;
     ctx.cwd = req.cwd.clone().into();
+    ctx.task_id = Some(id.to_string());
     actions::execute(&mut ctx, &req.command)
 }
 

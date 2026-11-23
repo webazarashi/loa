@@ -59,6 +59,12 @@ pub fn new_id() -> String {
     format!("t_{}", crate::util::random_hex(4))
 }
 
+/// Shape of ids made by [`new_id`].
+pub fn valid_task_id(s: &str) -> bool {
+    s.strip_prefix("t_")
+        .is_some_and(|h| h.len() == 8 && h.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
 pub fn status_path(paths: &Paths, id: &str) -> PathBuf {
     paths.task_dir(id).join("status.json")
 }
@@ -217,18 +223,40 @@ pub fn worker_lock_path(paths: &Paths, id: &str) -> PathBuf {
 }
 
 /// Business-level lock: one browser automation per LINE Business ID at a time.
-pub fn business_lock(paths: &Paths, business_id: &str) -> Result<()> {
+/// `holder` (the caller's task id) is written next to the lock so a refused caller can name the
+/// running task.
+pub fn business_lock(paths: &Paths, business_id: &str, holder: Option<&str>) -> Result<()> {
     let p = paths.locks_dir().join(format!("{business_id}.lock"));
+    let holder_file = paths.locks_dir().join(format!("{business_id}.holder"));
     let deadline = Instant::now() + Duration::from_secs(3);
     loop {
         if hold_lock(&p)? {
+            match holder {
+                Some(id) => crate::paths::write_atomic(&holder_file, id.as_bytes())?,
+                None => {
+                    let _ = std::fs::remove_file(&holder_file);
+                }
+            }
             return Ok(());
         }
         if Instant::now() > deadline {
-            return Err(LoaError::new(
+            let running = std::fs::read_to_string(&holder_file)
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| valid_task_id(s));
+            let err = LoaError::new(
                 Code::Busy,
-                format!("LINEビジネスID {business_id} で別の操作が実行中です"),
-            ));
+                match &running {
+                    Some(t) => {
+                        format!("LINEビジネスID {business_id} で別の操作（タスク {t}）が実行中です")
+                    }
+                    None => format!("LINEビジネスID {business_id} で別の操作が実行中です"),
+                },
+            );
+            return Err(match running {
+                Some(t) => err.with_next(format!("loa wait {t}")),
+                None => err,
+            });
         }
         std::thread::sleep(Duration::from_millis(200));
     }
@@ -619,5 +647,17 @@ mod tests {
     fn invalid_ids_rejected() {
         let p = paths("d");
         assert!(read_status(&p, "../etc").is_err());
+        assert!(valid_task_id(&new_id()));
+        assert!(!valid_task_id("t_../x"));
+    }
+
+    #[test]
+    fn busy_names_the_running_task() {
+        let p = paths("e");
+        business_lock(&p, "b1", Some("t_0123abcd")).unwrap();
+        let e = business_lock(&p, "b1", Some("t_ffff0000")).unwrap_err();
+        assert_eq!(e.code, Code::Busy);
+        assert!(e.message.contains("t_0123abcd"), "{}", e.message);
+        assert_eq!(e.next, vec!["loa wait t_0123abcd".to_string()]);
     }
 }
