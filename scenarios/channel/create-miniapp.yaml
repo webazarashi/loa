@@ -27,34 +27,29 @@ steps:
   - agree_terms:
       terms_id: "line-developers-agreement"
       title: "LINE開発者契約"
-      role: checkbox
-      name: "LINE開発者契約に同意します。"
+      label: "LINE開発者契約に同意します。"
       link: "https://terms2.line.me/LINE_Developers_Agreement?lang=ja"
   - agree_terms:
       terms_id: "line-mini-app-platform-terms"
       title: "LINEミニアプリプラットフォーム規約"
-      role: checkbox
-      name: "LINEミニアプリプラットフォーム規約に同意します。"
+      label: "LINEミニアプリプラットフォーム規約に同意します。"
       link: "https://terms2.line.me/LINE_Developers_MINI_App_JP?country=JP&lang=ja"
   - agree_terms:
       terms_id: "line-mini-app-policy"
       title: "LINEミニアプリポリシー"
-      role: checkbox
-      name: "LINEミニアプリポリシーを遵守します。"
+      label: "LINEミニアプリポリシーを遵守します。"
       link: "https://terms2.line.me/LINE_MINI_App?lang=ja"
   - agree_terms:
       terms_id: "line-mini-app-region-warranty"
       title: "提供地域と事業者の所在国・地域が同一であることの表明・保証"
-      role: checkbox
-      name: "LINEミニアプリを提供する地域と、サービス事業主の所在国・地域が同一であることを表明し、保証します。"
+      label: "LINEミニアプリを提供する地域と、サービス事業主の所在国・地域が同一であることを表明し、保証します。"
   - agree_terms:
       terms_id: "line-mini-app-authority-warranty"
       title: "会社を代表して規約に同意する権限があることの表明・保証"
-      role: checkbox
-      name: "これらの規約に同意すること及びこれらの契約を締結することについて、会社を代表する必要かつ正当な権限を有していることを表明し、保証します。 入力及び操作を行う者が開発受託会社（開発担当企業）の場合は、これらの規約に同意し、これらの規約に基づく契約を締結すること及び以降の必要な操作設定を行うことについてプロバイダーの代理として必要かつ正当な権限を有していることを表明し、保証します。"
+      label: "これらの規約に同意すること及びこれらの契約を締結することについて、会社を代表する必要かつ正当な権限を有していることを表明し、保証します。 入力及び操作を行う者が開発受託会社（開発担当企業）の場合は、これらの規約に同意し、これらの規約に基づく契約を締結すること及び以降の必要な操作設定を行うことについてプロバイダーの代理として必要かつ正当な権限を有していることを表明し、保証します。"
   - click: { role: button, name: "作成" }
-  # 作成後に開くタブは未確認。チャネルID付きのURLに移れば作成済みとみなす（作成画面は /console/channel/new?...）
-  - wait_url: "**/console/channel/*/**"
+  # 2026-11-23 確認: 作成後は /console/channel/<id>（末尾なし）に移り、基本設定が表示される
+  - wait_text: "チャネル基本設定"
   - read_url: { pattern: "/console/channel/(?<id>\\d+)", into: channel_id }
   - goto: "https://developers.line.biz/console/channel/{{channel_id}}/basics"
   - read_secret: { label: "チャネルシークレット", pattern: "([0-9a-f]{32})", into: channel_secret }

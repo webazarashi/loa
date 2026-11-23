@@ -54,6 +54,22 @@ function edit(id){{document.getElementById(id).hidden=false;}}
 </script></body></html>"""
 
 
+def kv(label, value, action=None, field=None, multiline=False, extra=""):
+    """Developers console field (2026-11-23): one bare <label>, the value, and 編集 → 更新 / キャンセル
+    in the same box. The label is not tied to the input."""
+    form, btn = "", ""
+    if action:
+        fid = "k_" + rhex(6)
+        inp = (f'<textarea name="value">{esc(value)}</textarea>' if multiline
+               else f'<input name="value" value="{esc(value)}">')
+        form = (f'<form id="{fid}" method="post" action="{action}" hidden><input type="hidden" name="field" value="{field}">'
+                f'{inp}<button type="submit">更新</button>'
+                f'<button type="button" onclick="document.getElementById(\'{fid}\').hidden=true">キャンセル</button></form>')
+        btn = f'<button type="button" onclick="edit(\'{fid}\')">編集</button>'
+    return (f'<div class="kv-field"><label>{esc(label)} <i></i></label><section><div class="field">'
+            f'<span>{esc(value)}</span>{form}</div></section><aside><div class="dc-operations">{btn}{extra}</div></aside></div>')
+
+
 def group(label, value, form_html=None, extra=""):
     btn = ""
     if form_html is not None:
@@ -310,17 +326,17 @@ class H(BaseHTTPRequestHandler):
                 consent = ""
                 if not ch["consent"]:
                     consent = f'<dialog open aria-label="情報利用に関する同意について"><p>情報の利用に同意してください。</p><form method="post" action="{base}/consent"><button type="submit">同意する</button></form></dialog>'
-                body = head + consent + "".join([
-                    group("チャネルID", cid),
-                    group("チャネル名", ch["name"], edit_form(f"{base}/update", "name", "チャネル名", ch["name"])),
-                    group("チャネル説明", ch["description"], edit_form(f"{base}/update", "description", "チャネル説明", ch["description"], True)),
-                    group("メールアドレス", ch["email"], edit_form(f"{base}/update", "email", "メールアドレス", ch["email"])),
-                    group("チャネルシークレット", ch["secret"], extra='<button type="button">再発行</button>'),
+                body = head + consent + "<h2>チャネル基本設定</h2>" + "".join([
+                    kv("チャネルID", cid),
+                    kv("チャネル名", ch["name"], f"{base}/update", "name", True),
+                    kv("チャネル説明", ch["description"], f"{base}/update", "description", True),
+                    kv("メールアドレス", ch["email"], f"{base}/update", "email", True),
+                    kv("チャネルシークレット", ch["secret"], extra='<button type="button">発行</button>'),
                 ]) + f"""<button type="button" onclick="document.getElementById('del').showModal()">削除</button>
 <dialog id="del" aria-label="チャネルを削除"><p>{esc(ch["name"])} を削除しますか？</p><form method="post" action="{base}/delete"><button type="submit">削除</button></form></dialog>"""
                 return self.send(200, page(ch["name"], body))
             if tab == "line-login":
-                body = head + group("コールバックURL", ch["callbacks"], edit_form(f"{base}/update", "callback", "コールバックURL", ch["callbacks"], True))
+                body = head + kv("コールバックURL", ch["callbacks"], f"{base}/update", "callback", True)
                 return self.send(200, page(ch["name"], body))
             if tab == "web-app":
                 if method == "POST":

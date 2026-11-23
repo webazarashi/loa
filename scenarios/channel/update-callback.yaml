@@ -10,6 +10,6 @@ inputs:
 steps:
   - goto: "https://developers.line.biz/console/channel/{{channel_id}}/line-login"
   - require_login: true
-  - click: { role: button, name: "編集", within: { role: group, name: "コールバックURL" } }
+  - click: { role: button, name: "編集", within: { label: "コールバックURL" } }
   - fill: { label: "コールバックURL", value: "{{callback_urls}}" }
-  - click: { role: button, name: "更新", within: { role: group, name: "コールバックURL" } }
+  - click: { role: button, name: "更新", within: { label: "コールバックURL" } }

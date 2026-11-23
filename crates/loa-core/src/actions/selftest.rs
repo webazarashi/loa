@@ -166,6 +166,17 @@ pub fn run(ctx: &mut Ctx<'_>, provider_name: &str) -> Result<Envelope> {
             .iter()
             .map(|r| r["scenarios"].as_str().unwrap_or("").to_string())
             .collect();
+        // A person said no (or did not answer): the scenarios are not known to be broken.
+        if let Some(denied) = failed.iter().find(|r| r["code"] == "APPROVAL_DENIED") {
+            return Err(LoaError::new(
+                Code::ApprovalDenied,
+                format!(
+                    "selftest を中止しました: {}",
+                    denied["message"].as_str().unwrap_or("承認されませんでした")
+                ),
+            )
+            .with_detail(data));
+        }
         Err(LoaError::new(
             Code::UiChanged,
             format!(

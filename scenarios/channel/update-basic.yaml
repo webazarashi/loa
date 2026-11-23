@@ -16,20 +16,20 @@ steps:
   - if_set:
       var: name
       then:
-        - click: { role: button, name: "編集", within: { role: group, name: "チャネル名" } }
+        - click: { role: button, name: "編集", within: { label: "チャネル名" } }
         - fill: { label: "チャネル名", value: "{{name}}" }
-        - click: { role: button, name: "更新", within: { role: group, name: "チャネル名" } }
+        - click: { role: button, name: "更新", within: { label: "チャネル名" } }
         - wait_text: "{{name}}"
   - if_set:
       var: description
       then:
-        - click: { role: button, name: "編集", within: { role: group, name: "チャネル説明" } }
+        - click: { role: button, name: "編集", within: { label: "チャネル説明" } }
         - fill: { label: "チャネル説明", value: "{{description}}" }
-        - click: { role: button, name: "更新", within: { role: group, name: "チャネル説明" } }
+        - click: { role: button, name: "更新", within: { label: "チャネル説明" } }
         - wait_text: "{{description}}"
   - if_set:
       var: email
       then:
-        - click: { role: button, name: "編集", within: { role: group, name: "メールアドレス" } }
+        - click: { role: button, name: "編集", within: { label: "メールアドレス" } }
         - fill: { label: "メールアドレス", value: "{{email}}" }
-        - click: { role: button, name: "更新", within: { role: group, name: "メールアドレス" } }
+        - click: { role: button, name: "更新", within: { label: "メールアドレス" } }

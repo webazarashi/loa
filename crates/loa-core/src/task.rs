@@ -484,9 +484,28 @@ impl HumanGate for TaskGate {
             return Ok(a == "approve");
         }
         let input = serde_json::to_value(req)?;
+        let started = Instant::now();
         let out = self.run_ui("approve", &input, self.approval_timeout);
         self.clear_waiting();
-        Ok(out.is_some_and(|s| s.trim() == "approved"))
+        match out {
+            Some(s) => Ok(s.trim() == "approved"),
+            None if started.elapsed() >= self.approval_timeout => Err(LoaError::new(
+                Code::ApprovalDenied,
+                format!(
+                    "承認画面に {} 分間応答がなかったため、拒否として扱いました: {}",
+                    self.approval_timeout.as_secs().div_ceil(60),
+                    req.title
+                ),
+            )
+            .with_hint("もう一度実行し、loa の承認画面で［承認］か［拒否］を押してください")),
+            None => Err(LoaError::new(
+                Code::ApprovalDenied,
+                format!(
+                    "承認画面を表示できなかったため、拒否として扱いました: {}",
+                    req.title
+                ),
+            )),
+        }
     }
 
     fn paste(&self, req: &PasteRequest) -> Result<Zeroizing<String>> {

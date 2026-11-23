@@ -27,15 +27,15 @@ steps:
       then:
         - fill: { label: "メールアドレス", value: "{{email}}" }
   # 「2要素認証の必須化」は最初からオンのまま
+  # 規約のチェックボックスは、ラベル内に規約へのリンクがあるため role+name では見つからない（agent-browser 0.41）。ラベルで指定する
   - agree_terms:
       terms_id: "line-developers-agreement"
       title: "LINE開発者契約"
-      role: checkbox
-      name: "LINE開発者契約に同意します。"
+      label: "LINE開発者契約に同意します。"
       link: "https://terms2.line.me/LINE_Developers_Agreement?lang=ja"
   - click: { role: button, name: "作成" }
-  # 作成後に開くタブは未確認。チャネルID付きのURLに移れば作成済みとみなす（作成画面は /console/channel/new?...）
-  - wait_url: "**/console/channel/*/**"
+  # 2026-11-23 確認: 作成後は /console/channel/<id>（末尾なし）に移り、基本設定が表示される
+  - wait_text: "チャネル基本設定"
   - if_exists:
       role: button
       name: "同意する"

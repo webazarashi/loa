@@ -449,7 +449,10 @@ impl<'a> Runner<'a> {
                 ],
                 changes: Vec::new(),
                 link: link.clone(),
-                note: Some("同意すると、同じ内容の規約には以後 loa が自動で同意します。".into()),
+                note: Some(
+                    "ブラウザ側のチェックボックスやボタンは操作しないでください。［承認］を押すと loa が同意の操作をします。同じ内容の規約には、以後 loa が自動で同意します。"
+                        .into(),
+                ),
             };
             if !self.gate.approve(&req)? {
                 return Err(LoaError::new(
@@ -573,6 +576,9 @@ impl<'a> Runner<'a> {
 
     /// click / fill / check with implicit waiting for the element.
     fn act(&mut self, l: &Locator, action: &str, arg: Option<String>) -> Result<()> {
+        if let Some((label, role, name)) = near_label(l) {
+            return self.act_near_label(&label, &role, &name, action, arg);
+        }
         let c: Cmd = match self.target(l) {
             Target::Find { kind, value, name } => {
                 let label = (kind == "label").then(|| value.clone());
@@ -615,6 +621,46 @@ impl<'a> Runner<'a> {
                     std::thread::sleep(Duration::from_millis(500));
                 }
                 Err(e) => return Err(to_loa_error(e)),
+            }
+        }
+    }
+
+    /// `{ role, name, within: { label } }`: the element in the field box of a bare label.
+    fn act_near_label(
+        &mut self,
+        label: &str,
+        role: &str,
+        name: &str,
+        action: &str,
+        arg: Option<String>,
+    ) -> Result<()> {
+        let deadline = Instant::now() + self.wait_timeout;
+        let js = near_label_js(label, role, name);
+        loop {
+            let v = self.eval(&js)?;
+            match v.get("count").and_then(Value::as_i64).unwrap_or(0) {
+                1 => {
+                    let sel = v.get("sel").and_then(Value::as_str).unwrap_or_default();
+                    let mut c = vec![action.to_string(), sel.to_string()];
+                    c.extend(arg);
+                    return self.browser.run(c).map(|_| ()).map_err(to_loa_error);
+                }
+                -1 => {
+                    return Err(LoaError::ui_changed(format!(
+                        "within: {{ label }} で指定できるのは button / link / checkbox です（{role}）"
+                    )));
+                }
+                0 if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(500)),
+                0 => {
+                    return Err(LoaError::ui_changed(format!(
+                        "要素が見つかりません: 「{label}」の {role} 「{name}」"
+                    )));
+                }
+                n => {
+                    return Err(LoaError::ui_changed(format!(
+                        "「{label}」の {role} 「{name}」が {n} 個見つかり特定できません"
+                    )));
+                }
             }
         }
     }
@@ -713,6 +759,10 @@ impl<'a> Runner<'a> {
     }
 
     fn exists(&mut self, l: &Locator) -> Result<bool> {
+        if let Some((label, role, name)) = near_label(l) {
+            let v = self.eval(&near_label_js(&label, &role, &name))?;
+            return Ok(v.get("count").and_then(Value::as_i64).unwrap_or(0) > 0);
+        }
         if let (Some(text), Some(w)) = (&l.text, &l.within)
             && l.role.is_none()
         {
@@ -1021,6 +1071,61 @@ fn field_js(label: &str) -> String {
       const ctrls = [...box.querySelectorAll(CTRL)].filter(visible);
       if (ctrls.length === 1) {{ found.add(ctrls[0]); break; }}
       if (ctrls.length > 1) break;
+    }}
+  }}
+  for (const e of document.querySelectorAll('[data-loa-field]')) e.removeAttribute('data-loa-field');
+  if (found.size !== 1) return {{ count: found.size }};
+  const el = [...found][0];
+  el.setAttribute('data-loa-field', '{token}');
+  return {{ count: 1, sel: '[data-loa-field="{token}"]' }};
+}})()"#
+    )
+}
+
+/// `{ role, name, within: { label } }` with nothing else in the scope → (label, role, name).
+fn near_label(l: &Locator) -> Option<(String, String, String)> {
+    let w = l.within.as_ref()?;
+    let only_label = w.role.is_none()
+        && w.name.is_none()
+        && w.text.is_none()
+        && w.css.is_none()
+        && w.within.is_none();
+    match (&w.label, &l.role, &l.name) {
+        (Some(label), Some(role), Some(name)) if only_label => {
+            Some((label.clone(), role.clone(), name.clone()))
+        }
+        _ => None,
+    }
+}
+
+/// Element with `role` and exact `name` inside the field box of a bare `<label>` (the console's
+/// `kv-field`: label, value, 編集 / 更新 / キャンセル). The box is the nearest ancestor of the label
+/// that holds such an element, without reaching past a box that holds other labels. Tags a unique
+/// match like [`field_js`]; `count: -1` means the role is not supported here.
+fn near_label_js(label: &str, role: &str, name: &str) -> String {
+    let j = |s: &str| serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into());
+    let (l, r, n) = (j(label), j(role), j(name));
+    let token = crate::util::random_hex(6);
+    format!(
+        r#"(() => {{
+  const L = {l}, ROLE = {r}, N = {n};
+  const norm = s => (s || '').replace(/\s+/g, ' ').trim();
+  const visible = e => !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length) && getComputedStyle(e).visibility !== 'hidden';
+  const SEL = {{
+    button: 'button, [role=button], input[type=button], input[type=submit]',
+    link: 'a[href], [role=link]',
+    checkbox: 'input[type=checkbox], [role=checkbox]',
+  }}[ROLE];
+  if (!SEL) return {{ count: -1 }};
+  const nameOf = e => norm(e.getAttribute('aria-label') || e.innerText || e.value);
+  const found = new Set();
+  for (const lab of document.querySelectorAll('label')) {{
+    if (!visible(lab) || norm(lab.innerText) !== L) continue;
+    let box = lab.parentElement;
+    for (let depth = 0; depth < 5 && box; depth++, box = box.parentElement) {{
+      if ([...box.querySelectorAll('label')].filter(visible).length > 1) break;
+      const hits = [...box.querySelectorAll(SEL)].filter(e => visible(e) && nameOf(e) === N);
+      if (hits.length) {{ hits.forEach(h => found.add(h)); break; }}
     }}
   }}
   for (const e of document.querySelectorAll('[data-loa-field]')) e.removeAttribute('data-loa-field');
@@ -1364,6 +1469,36 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(resolve_in(&snap, &l).unwrap(), vec!["e3".to_string()]);
+    }
+
+    #[cfg(not(feature = "test-hooks"))]
+    #[test]
+    fn button_in_a_label_box_is_clicked_through_its_tag() {
+        let sc = scenario(
+            "channel.update",
+            "steps:\n  - click: { role: button, name: \"編集\", within: { label: \"チャネル説明\" } }\n",
+        );
+        let mut b = FakeBrowser {
+            current_url: "https://developers.line.biz/console/".into(),
+            ..Default::default()
+        };
+        b.responses.push_back(Ok(
+            json!({"result": {"count": 1, "sel": "[data-loa-field=\"cd\"]"}}),
+        ));
+        let t = terms();
+        let r = Runner::new(
+            &mut b,
+            &NoHumanGate,
+            &t,
+            OpKind::ChannelUpdate,
+            std::env::temp_dir(),
+        );
+        r.run(&sc, &Vars::new()).unwrap();
+        let want: Vec<String> = ["click", "[data-loa-field=\"cd\"]"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        assert!(b.calls.contains(&want), "{:?}", b.calls);
     }
 
     #[cfg(not(feature = "test-hooks"))]
