@@ -2,7 +2,7 @@ id: channel.delete
 version: 1
 min_loa_version: "0.1.0"
 operation: channel.delete
-status: provisional
+status: verified
 description: 承認済みのチャネルを削除する。押す前に画面上のチャネルIDを照合する
 inputs:
   channel_id: { type: string, required: true }
@@ -10,9 +10,13 @@ inputs:
 steps:
   - goto: "https://developers.line.biz/console/channel/{{channel_id}}/basics"
   - require_login: true
-  - confirm_target: { label: "チャネルID", equals: "{{channel_id}}" }
-  - confirm_target: { label: "チャネル名", equals: "{{name}}" }
+  # 「多言語対応」の表にも「チャネル名」の列見出しがあるので、基本情報の中に絞る
+  - confirm_target: { label: "チャネルID", equals: "{{channel_id}}", within: { role: heading, name: "基本情報" } }
+  - confirm_target: { label: "チャネル名", equals: "{{name}}", within: { role: heading, name: "基本情報" } }
   - click: { role: button, name: "削除" }
-  - wait_for: { role: dialog }
-  - click: { role: button, name: "削除", within: { role: dialog } }
+  # 確認は role=dialog の無い枠。チャネルIDの入力と同意のチェックが要り、ボタンは枠の contentinfo にある
+  - wait_text: "このチャネルを削除しますか？"
+  - fill: { label: "確認のためチャネルID（{{channel_id}}）を入力してください。", value: "{{channel_id}}" }
+  - check: { label: "上記に同意し、このチャネルの永久削除を希望します。" }
+  - click: { role: button, name: "削除", within: { role: contentinfo } }
   - wait_url: "**/console/provider/**"

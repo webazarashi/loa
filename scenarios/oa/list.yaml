@@ -2,7 +2,7 @@ id: oa.list
 version: 1
 min_loa_version: "0.1.0"
 operation: oa.list
-status: provisional
+status: verified
 outputs:
   accounts: { type: list }
 steps:

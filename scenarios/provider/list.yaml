@@ -2,7 +2,7 @@ id: provider.list
 version: 1
 min_loa_version: "0.1.0"
 operation: provider.list
-status: provisional
+status: verified
 description: コンソールのトップからプロバイダーの一覧を読む
 outputs:
   providers: { type: list }

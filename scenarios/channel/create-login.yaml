@@ -2,7 +2,7 @@ id: channel.create.login
 version: 1
 min_loa_version: "0.1.0"
 operation: channel.create
-status: provisional
+status: verified
 inputs:
   provider_id: { type: string, required: true }
   name: { type: string, required: true }
@@ -20,7 +20,8 @@ steps:
   - select: { label: "会社・事業者の所在国・地域", value: "{{company_country}}" }
   - fill: { label: "チャネル名", value: "{{name}}" }
   - fill: { label: "チャネル説明", value: "{{description}}" }
-  - check: { role: checkbox, name: "ウェブアプリ" }
+  # agent-browser 0.44 は、装飾（::before）が重なるチェックボックスを role 指定では押さない。ラベルで押す
+  - check: { label: "ウェブアプリ" }
   # メールアドレスはアカウントのアドレスが最初から入っている。指定されたときだけ書き換える
   - if_set:
       var: email

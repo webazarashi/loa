@@ -2,7 +2,7 @@ id: channel.update.basic
 version: 1
 min_loa_version: "0.1.0"
 operation: channel.update
-status: provisional
+status: verified
 description: チャネル名・説明・メールアドレスのうち、指定された項目だけを変更する
 inputs:
   channel_id: { type: string, required: true }

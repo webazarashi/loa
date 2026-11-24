@@ -2,7 +2,7 @@ id: channel.update.callback
 version: 1
 min_loa_version: "0.1.0"
 operation: channel.update
-status: provisional
+status: verified
 description: LINEログイン設定のコールバックURL（改行区切りで複数）を置き換える
 inputs:
   channel_id: { type: string, required: true }

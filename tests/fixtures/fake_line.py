@@ -319,6 +319,9 @@ class H(BaseHTTPRequestHandler):
                 back = "line-login" if key == "callbacks" else "basics"
                 return self.redirect(f"{base}/{back}")
             if tab == "delete" and method == "POST":
+                f = self.form()
+                if f.get("confirm", "").strip() != cid or f.get("agree") != "on":
+                    return self.send(400, page("error", "<p>チャネルIDの入力と同意が必要です</p>"))
                 pid = ch["pid"]
                 del STATE["channels"][cid]
                 return self.redirect(f"/dev/console/provider/{pid}")
@@ -326,14 +329,24 @@ class H(BaseHTTPRequestHandler):
                 consent = ""
                 if not ch["consent"]:
                     consent = f'<dialog open aria-label="情報利用に関する同意について"><p>情報の利用に同意してください。</p><form method="post" action="{base}/consent"><button type="submit">同意する</button></form></dialog>'
-                body = head + consent + "<h2>チャネル基本設定</h2>" + "".join([
+                # Real console (2026-11-24): fields sit in a 基本情報 section, the 多言語対応 table repeats
+                # 「チャネル名」 as a column header, and deleting opens a plain box (no role=dialog) that
+                # wants the channel ID typed in and a consent checkbox, with its buttons in a contentinfo.
+                body = head + consent + "<h2>チャネル基本設定</h2>" + '<section class="tab-section"><h3>基本情報</h3>' + "".join([
                     kv("チャネルID", cid),
                     kv("チャネル名", ch["name"], f"{base}/update", "name", True),
                     kv("チャネル説明", ch["description"], f"{base}/update", "description", True),
                     kv("メールアドレス", ch["email"], f"{base}/update", "email", True),
                     kv("チャネルシークレット", ch["secret"], extra='<button type="button">発行</button>'),
-                ]) + f"""<button type="button" onclick="document.getElementById('del').showModal()">削除</button>
-<dialog id="del" aria-label="チャネルを削除"><p>{esc(ch["name"])} を削除しますか？</p><form method="post" action="{base}/delete"><button type="submit">削除</button></form></dialog>"""
+                ]) + f"""</section>
+<section class="tab-section"><h3>多言語対応</h3><table><tr><th>言語</th><th>チャネル名</th><th>チャネル説明</th></tr><tr><td colspan="3">データはありません。</td></tr></table></section>
+<section class="tab-section"><h3>チャネルの削除</h3><button type="button" onclick="document.getElementById('del').hidden=false">削除</button></section>
+<div class="kv-modal" id="del" hidden><form method="post" action="{base}/delete"><header>このチャネルを削除しますか？</header>
+<ol><li>一度チャネルを削除すると元に戻せません。</li></ol>
+<div><label>確認のためチャネルID（{cid}）を入力してください。</label><textarea name="confirm"></textarea></div>
+<div><input type="checkbox" id="delagree" name="agree"><label for="delagree">上記に同意し、このチャネルの永久削除を希望します。</label></div>
+<div role="contentinfo"><button type="button" onclick="document.getElementById('del').hidden=true">キャンセル</button><button type="submit">削除</button></div></form></div>
+<div role="contentinfo"><a href="/dev/console/">規約とポリシー</a></div>"""
                 return self.send(200, page(ch["name"], body))
             if tab == "line-login":
                 body = head + kv("コールバックURL", ch["callbacks"], f"{base}/update", "callback", True)

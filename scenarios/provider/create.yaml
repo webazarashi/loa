@@ -2,7 +2,7 @@ id: provider.create
 version: 1
 min_loa_version: "0.1.0"
 operation: provider.create
-status: provisional
+status: verified
 inputs:
   name: { type: string, required: true }
 outputs:
