@@ -110,15 +110,15 @@ loa oa update "loa テスト" --members.add test --members.role operator   # 招
 | 項目 | 状況 |
 |---|---|
 | 実画面で確認済みのシナリオ（`verified`） | provider.list・provider.create・channel.list・channel.create.login・channel.get・channel.update.basic・channel.update.callback・channel.delete・oa.list・session.login・session.whoami（2026-11-21〜24）。LIFF の作成・更新・削除（API）も selftest で通った |
-| 未確認のシナリオ（`provisional`） | 公式アカウントの取得・作成・更新・Messaging API の有効化、ミニアプリ、provider.update |
+| 未確認のシナリオ（`provisional`） | 公式アカウントの取得・作成・更新・Messaging API の有効化、ミニアプリ、provider.update。公式アカウントの更新（プロフィール・設定・応答設定）は［保存］を押したところで終わり、保存の完了を画面で確かめていない。本物の画面で保存後の表示を確かめてから、待つ手順を足す |
 | macOS キーチェーンの許可ダイアログ | 署名なしやチーム ID の無い自己署名では、作り直すたびに許可を求められる。手元では `scripts/dev-sign.sh`（Apple Development 証明書）で署名すれば出ない。配布版は更新のたびに1回許可が要る（有料の Developer ID で署名すれば不要）。署名なしの loa をバックグラウンドの端末（Orca など）から起動すると、許可ダイアログが表示されないことがある |
-| Windows | 型検査と lint まで（`cargo clippy --target x86_64-pc-windows-gnu --no-default-features`）。`ring` の C コードは mingw がないため未コンパイル。実機では未確認 |
-| CI・Release ワークフロー | 未実行（push していないため） |
+| Windows | CI（`windows-2022`）で fmt・clippy・単体テストが通る（2026-11-24）。実機での操作は未確認 |
+| CI・Release ワークフロー | CI は https://github.com/webazarashi/loa で push ごとに動く。Release の2つ（`v*`・`scenarios-v*` タグ）は未実行 |
 | `loa scenarios update` | 配布元リポジトリと minisign 鍵が未設定のため `SETUP_REQUIRED` で止まる（仕様どおり） |
 
 ## 7. 公開するときに決めること
 
-1. 配布元リポジトリ名（`OWNER/REPO`）
+1. 配布元リポジトリ名：`webazarashi/loa` に決定（2026-11-24 公開）
 2. minisign の鍵を作る：`minisign -G -W -p loa-scenarios.pub -s <秘密鍵の保存先>`
    - 公開鍵（`.pub` の2行目）をリポジトリ変数 `LOA_SCENARIO_PUBKEY` に設定
    - 秘密鍵ファイルの中身をシークレット `MINISIGN_SECRET_KEY` に設定し、手元からは削除
