@@ -1,5 +1,5 @@
 id: channel.get
-version: 1
+version: 2
 min_loa_version: "0.1.0"
 operation: channel.get
 status: verified
@@ -7,12 +7,14 @@ description: チャネル基本設定を読む。チャネルシークレット�
 inputs:
   channel_id: { type: string, required: true }
 outputs:
+  name: { type: string }
   description: { type: string }
   channel_secret: { type: secret }
 steps:
   - goto: "https://developers.line.biz/console/channel/{{channel_id}}/basics"
   - require_login: true
   - assert: { text_contains: "{{channel_id}}" }
-  # 「多言語対応」の表にも「チャネル説明」の列見出しがあるので、基本情報の中に絞る
+  # 「多言語対応」の表にも「チャネル名」「チャネル説明」の列見出しがあるので、基本情報の中に絞る
+  - read: { label: "チャネル名", within: { role: heading, name: "基本情報" }, into: name }
   - read: { label: "チャネル説明", within: { role: heading, name: "基本情報" }, into: description, optional: true }
   - read_secret: { label: "チャネルシークレット", pattern: "([0-9a-f]{32})", into: channel_secret }

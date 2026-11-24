@@ -1,0 +1,22 @@
+id: channel.update.linked_oa
+version: 1
+min_loa_version: "0.1.0"
+operation: channel.update
+status: verified
+description: LINEログインチャネルの「友だち追加オプション」で、リンクするLINE公式アカウントを選ぶ
+inputs:
+  channel_id: { type: string, required: true }
+  oa_id: { type: string, required: true }
+outputs:
+  linked_oa: { type: string }
+steps:
+  - goto: "https://developers.line.biz/console/channel/{{channel_id}}/basics"
+  - require_login: true
+  - assert: { text_contains: "{{channel_id}}" }
+  - click: { role: button, name: "編集", within: { label: "リンクされたLINE公式アカウント" } }
+  # 2026-11-24 確認: 選択欄は表示用の飾り（::before）が上にかぶるのでクリックしない。select の値を直接選ぶ
+  # （選択肢の値はベーシックID、表示は「@247peamj/[Demo]問い合わせフォーム」）
+  - select: { label: "リンクされたLINE公式アカウント", value: "{{oa_id}}" }
+  - click: { role: button, name: "更新", within: { label: "リンクされたLINE公式アカウント" } }
+  - wait_for: { role: button, name: "編集", within: { label: "リンクされたLINE公式アカウント" } }
+  - read: { label: "リンクされたLINE公式アカウント", into: linked_oa }

@@ -46,6 +46,12 @@ pub enum OpKind {
     ChannelDelete,
     #[serde(rename = "channel.reissue_secret")]
     ChannelReissueSecret,
+    /// Read the long-lived channel access token, issuing it when there is none.
+    #[serde(rename = "channel.issue_token")]
+    ChannelIssueToken,
+    /// Reissue the long-lived channel access token (the old one stops working).
+    #[serde(rename = "channel.reissue_token")]
+    ChannelReissueToken,
     #[serde(rename = "liff.list")]
     LiffList,
     #[serde(rename = "liff.add")]
@@ -98,6 +104,8 @@ impl OpKind {
             OpKind::ChannelUpdate => "channel.update",
             OpKind::ChannelDelete => "channel.delete",
             OpKind::ChannelReissueSecret => "channel.reissue_secret",
+            OpKind::ChannelIssueToken => "channel.issue_token",
+            OpKind::ChannelReissueToken => "channel.reissue_token",
             OpKind::LiffList => "liff.list",
             OpKind::LiffAdd => "liff.add",
             OpKind::LiffUpdate => "liff.update",
@@ -138,6 +146,7 @@ impl OpKind {
             OpKind::ChannelDelete
             | OpKind::LiffDelete
             | OpKind::ChannelReissueSecret
+            | OpKind::ChannelReissueToken
             | OpKind::OaUpdateMembers
             | OpKind::OaUpdateResponse
             | OpKind::OaEnableMessagingApi => true,
@@ -154,7 +163,10 @@ impl OpKind {
     pub fn allows_destructive_clicks(self) -> bool {
         matches!(
             self,
-            OpKind::ChannelDelete | OpKind::ChannelReissueSecret | OpKind::OaUpdateMembers
+            OpKind::ChannelDelete
+                | OpKind::ChannelReissueSecret
+                | OpKind::ChannelReissueToken
+                | OpKind::OaUpdateMembers
         )
     }
 
@@ -200,6 +212,7 @@ mod tests {
             OpKind::ChannelDelete,
             OpKind::LiffDelete,
             OpKind::ChannelReissueSecret,
+            OpKind::ChannelReissueToken,
             OpKind::OaUpdateMembers,
             OpKind::OaUpdateResponse,
             OpKind::OaEnableMessagingApi,
@@ -212,6 +225,7 @@ mod tests {
             OpKind::OaUpdateProfile,
             OpKind::OaUpdateSettings,
             OpKind::LiffAdd,
+            OpKind::ChannelIssueToken,
         ] {
             assert!(!op.requires_approval(&none), "{op:?}");
         }

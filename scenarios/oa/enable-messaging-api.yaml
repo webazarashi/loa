@@ -1,9 +1,9 @@
 id: oa.enable_messaging_api
-version: 1
+version: 2
 min_loa_version: "0.1.0"
 operation: oa.enable_messaging_api
 status: provisional
-description: 承認済みの公式アカウントでMessaging APIを有効にし、チャネルIDとシークレットを読む
+description: 公式アカウントでMessaging APIを有効にし、チャネルIDとシークレットを読む。すでに利用中なら有効化の操作は飛ばす
 inputs:
   oa_id: { type: string, required: true }
   name: { type: string, required: true }
@@ -14,32 +14,63 @@ outputs:
 steps:
   - goto: "https://manager.line.biz/account/{{oa_id}}/setting/messaging-api"
   - require_login: true
-  - confirm_target: { css: "header", pattern: "(@[A-Za-z0-9._-]+)", equals: "{{oa_id}}" }
-  - assert: { text_contains: "{{name}}" }
-  - click: { role: button, name: "Messaging APIを利用する" }
-  - wait_for: { role: dialog }
+  # 2026-11-24 確認: 画面に header 要素は無い。同意画面にはアカウントの表示も無いので、URL の @ID で確かめる
+  - confirm_target: { url: true, pattern: "/account/(@[^/?#]+)", equals: "{{oa_id}}" }
+  # 2026-11-24 確認: 新しい公式アカウントを初めて開くと「情報利用に関する同意について」（ボタン「同意」）が出る
   - if_exists:
-      label: "開発者の名前"
+      role: heading
+      name: "情報利用に関する同意について"
+      wait_ms: 3000
       then:
-        - human:
-            message: "開発者情報（名前・メールアドレス）を入力して「同意する」を押してください"
-            until: { exists: { label: "プロバイダーを作成" } }
+        - agree_terms:
+            terms_id: "line-official-account-information-use"
+            title: "情報利用に関する同意について（LINE公式アカウント）"
+            role: button
+            name: "同意"
+            click: true
+            text_from: { css: "main" }
+        # 同意のあとの行き先は未確認。同意画面が消えるのを待ってから開き直す
+        - assert: { not_exists: { role: heading, name: "情報利用に関する同意について" } }
+        - goto: "https://manager.line.biz/account/{{oa_id}}/setting/messaging-api"
+  - wait_text: "ステータス"
+  # 2026-11-24 確認: アカウント名は画面上部のボタン（例 button "[Demo]問い合わせフォーム"）に出る
+  - assert: { exists: { role: button, name: "{{name}}" } }
+  # 「Messaging APIを利用する」は未利用のときだけある。利用中ならチャネル情報を読むだけにする
   - if_exists:
-      role: radio
-      name: "{{provider}}"
-      then:
-        - click: { role: radio, name: "{{provider}}" }
-      else:
-        - click: { role: radio, name: "プロバイダーを作成" }
-        - fill: { label: "プロバイダー名", value: "{{provider}}" }
-  - agree_terms:
-      terms_id: "line-official-account-api-terms"
-      title: "LINE公式アカウントAPI利用規約"
       role: button
-      name: "同意する"
-      click: true
-      link: "https://terms2.line.me/official_account_api_terms_jp?lang=ja"
-  - click: { role: button, name: "OK", within: { role: dialog } }
+      name: "Messaging APIを利用する"
+      then:
+        - click: { role: button, name: "Messaging APIを利用する" }
+        - if_exists:
+            label: "開発者の名前"
+            wait_ms: 3000
+            then:
+              - human:
+                  message: "開発者情報（名前・メールアドレス）を入力して「同意する」を押してください"
+                  until: { exists: { label: "プロバイダーを作成" } }
+        - if_exists:
+            role: radio
+            name: "{{provider}}"
+            wait_ms: 3000
+            then:
+              - click: { role: radio, name: "{{provider}}" }
+            else:
+              - click: { role: radio, name: "プロバイダーを作成" }
+              - fill: { label: "プロバイダー名", value: "{{provider}}" }
+        - agree_terms:
+            terms_id: "line-official-account-api-terms"
+            title: "LINE公式アカウントAPI利用規約"
+            role: button
+            name: "同意する"
+            click: true
+            link: "https://terms2.line.me/official_account_api_terms_jp?lang=ja"
+        # 2026-11-24 の記録: 続いて「プライバシーポリシーと利用規約」（URLは任意、ボタン OK / キャンセル）が出る。role=dialog ではない
+        - if_exists:
+            role: heading
+            name: "プライバシーポリシーと利用規約"
+            wait_ms: 5000
+            then:
+              - click: { role: button, name: "OK" }
   - wait_text: "Channel ID"
   - read: { label: "Channel ID", pattern: "(\\d{10})", into: channel_id }
   - read_secret: { label: "Channel secret", pattern: "([0-9a-f]{32})", into: channel_secret }

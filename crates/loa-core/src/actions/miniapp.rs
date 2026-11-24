@@ -44,7 +44,7 @@ pub fn get(ctx: &mut Ctx<'_>, key: &str, provider: Option<&str>) -> Result<Envel
     let mut res = ctx.resources()?;
     let rec = res
         .business(&ctx.business_id)
-        .channel_mut(&hit.provider, &hit.name);
+        .channel_mut(&hit.provider, &hit.key);
     let mut ids = std::collections::BTreeMap::new();
     for s in STAGES {
         let liff = out.str(&format!("{s}_liff_id")).filter(|v| !v.is_empty());

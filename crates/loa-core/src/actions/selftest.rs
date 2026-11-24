@@ -71,6 +71,7 @@ pub fn run(ctx: &mut Ctx<'_>, provider_name: &str) -> Result<Envelope> {
             description: Some("loa selftest".into()),
             email: None,
             callback_urls: vec![],
+            linked_oa: None,
         };
         let created = record(
             "channel create",

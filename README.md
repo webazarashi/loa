@@ -60,7 +60,16 @@ loa oa create --name "Acme Store"
 loa oa enable-messaging-api "Acme Store" --provider acme
 loa webhook set --channel "Acme Store" --url https://api.example.com/webhook
 loa oa update "Acme Store" --response.mode webhook
+
+# 長期のチャネルアクセストークン（キーチェーンへ。再発行は --reissue で承認必須）
+loa channel issue-token "Acme Store" --provider acme
+loa env write --channel "Acme Store" --map LINE_CHANNEL_ACCESS_TOKEN=channel.access_token
+
+# LINE ログインチャネルに公式アカウントをリンクする（友だち追加オプション）
+loa channel update acme-liff-stg --linked-oa "Acme Store"
 ```
+
+チャネル名が公式アカウント名と同じなど、同じ名前のチャネルが複数あるときは、チャネル ID で指定してください。
 
 Messaging API チャネルはコンソールから作れないため、`channel create --type messaging` はありません。公式アカウントで `oa enable-messaging-api` を実行すると作られます。
 

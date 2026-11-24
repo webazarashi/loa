@@ -1,5 +1,5 @@
 id: oa.update.members.remove
-version: 1
+version: 2
 min_loa_version: "0.1.0"
 operation: oa.update.members
 status: provisional
@@ -9,7 +9,8 @@ inputs:
 steps:
   - goto: "https://manager.line.biz/account/{{oa_id}}/setting/user"
   - require_login: true
-  - confirm_target: { css: "header", pattern: "(@[A-Za-z0-9._-]+)", equals: "{{oa_id}}" }
+  # 2026-11-24 確認: 公式アカウント管理画面に header 要素は無い。URL の @ID で確かめる
+  - confirm_target: { url: true, pattern: "/account/(@[^/?#]+)", equals: "{{oa_id}}" }
   - assert: { exists: { role: row, name: "{{member}}" } }
   - click: { role: button, name: "削除", within: { role: row, name: "{{member}}" } }
   - wait_for: { role: dialog }

@@ -65,12 +65,14 @@ v1.0 からの変更は「v1.1 での変更点」にまとめ、本文にも反�
 |---|---|---|---|
 | セッション | `login` `whoami` `logout` | ブラウザ | LINEビジネスID単位でセッションを分離 |
 | 公式アカウント | `oa ls` `oa get` | ブラウザ | |
-| 公式アカウント | `oa create` | ブラウザ | SMS認証などで人の操作が入る前提 |
+| 公式アカウント | `oa create` | ブラウザ | SMS認証や画像認証（reCAPTCHA）で人の操作が入る前提 |
 | 公式アカウント | `oa update` | ブラウザ | 対象項目は2-1 |
-| Messaging API連携 | `oa enable-messaging-api` | ブラウザ | 公式アカウントとプロバイダーの紐づけ。Messaging API チャネルはここで作られる |
+| Messaging API連携 | `oa enable-messaging-api` | ブラウザ | 公式アカウントとプロバイダーの紐づけ。Messaging API チャネルはここで作られる。すでに利用中なら承認なしでチャネルIDとシークレットを読むだけ |
 | プロバイダー | `provider ls/get/create/ensure/update` | ブラウザ | 削除は提供しない（影響が大きいため手動） |
 | チャネル | `channel ls/get/create/ensure/update/rm` | ブラウザ | 種類：`login`／`miniapp`（`messaging` は作成不可、変更点1） |
 | チャネルの秘密 | 作成時・取得時に自動読み取り | ブラウザ | キーチェーンへ保存 |
+| チャネルアクセストークン（長期） | `channel issue-token [--reissue]` | ブラウザ | Messaging APIチャネルのみ。表示されているものを読み、未発行なら発行する。再発行は `--reissue` で承認必須。キーチェーンへ保存 |
+| 友だち追加オプション | `channel update/ensure --linked-oa <oa>` | ブラウザ | LINEログインチャネルにリンクする公式アカウント（同じプロバイダーでMessaging APIを有効にしたもの） |
 | LIFF | `liff ls/get/add/ensure/update/rm` | **LINE API** | LINEログインチャネルのみ。トークンはloaが都度発行 |
 | ミニアプリ | `miniapp get/update --stage` | ブラウザ | 内部チャネル（開発用・審査用・本番用）ごとのLIFF IDとエンドポイントURL |
 | Webhook | `webhook get/set/test` | **LINE API** | Messaging APIチャネル |
@@ -142,6 +144,8 @@ loa channel get acme-liff-stg
 loa channel create --provider acme --type login --name acme-liff-stg --description "..."
 loa channel ensure --provider acme --type login --name acme-liff-stg --callback-url https://stg.example.com/cb
 loa channel update acme-liff-stg --callback-url https://stg.example.com/cb
+loa channel update acme-liff-stg --linked-oa "Acme Store"
+loa channel issue-token "Acme Store" --provider acme          # 長期のチャネルアクセストークン
 loa channel rm acme-liff-old
 
 # LIFF・ミニアプリ・Webhook
@@ -161,7 +165,8 @@ loa webhook test --channel "Acme Store"
 loa env write --channel acme-liff-stg --out .env.local \
   --map LIFF_ID=liff.main.id \
   --map LINE_CHANNEL_ID=channel.id \
-  --map LINE_CHANNEL_SECRET=channel.secret
+  --map LINE_CHANNEL_SECRET=channel.secret \
+  --map LINE_CHANNEL_ACCESS_TOKEN=channel.access_token
 loa exec --channel acme-liff-stg -- npm run dev
 
 # 宣言的一括
@@ -196,7 +201,7 @@ loa terms ls                    # 承認済みの利用規約一覧
     "name": "acme-liff-stg",
     "type": "login",
     "provider": "acme",
-    "secret_ref": "loa://acme/acme-liff-stg/channel_secret"
+    "secret_ref": "loa://acme/1234567890/channel_secret"
   },
   "next": ["loa liff ensure --channel acme-liff-stg --name main --url <URL>"],
   "warnings": ["シナリオ channel.create.login は実画面で未確認（provisional）です。結果を確認してください"]
@@ -222,9 +227,9 @@ loa terms ls                    # 承認済みの利用規約一覧
 |---|---|
 | `loa env write` | 指定したファイルに直接書き込む。stdoutには書いたキー名だけを返す。ファイルが `.gitignore` に含まれていなければ警告 |
 | `loa exec` | 子プロセスの環境変数にだけ渡す。ファイルに残さない |
-| `secret_ref` | `loa://<provider>/<channel>/<key>` 形式の参照名。値は返さない |
+| `secret_ref` | `loa://<provider>/<channel_id>/<key>` 形式の参照名（チャネル名は重複・変更があるのでIDを使う）。値は返さない |
 
-`--map` の右辺は `channel.id`、`channel.secret`、`liff.<名前>.id`、`liff.<名前>.url`、`miniapp.<stage>.liff_id` など。省略時はチャネルの種類に応じた既定の組を書く。
+`--map` の右辺は `channel.id`、`channel.name`、`channel.secret`、`channel.access_token`、`liff.<名前>.id`、`liff.<名前>.url`、`miniapp.<stage>.liff_id` など。省略時はチャネルの種類に応じた既定の組を書く。
 
 ### 3-5. エラーコードと終了コード
 
@@ -256,7 +261,7 @@ loa terms ls                    # 承認済みの利用規約一覧
 | 場面 | 人向け表示のとき | `--json` のとき |
 |---|---|---|
 | ログイン・2段階認証 | ブラウザで完了まで待つ（案内ウィンドウを表示） | `LOGIN_REQUIRED` で即終了 → `loa wait` |
-| SMS認証・本人確認（公式アカウント開設など） | 案内を表示して待つ | `HUMAN_ACTION_REQUIRED` で即終了 → `loa wait` |
+| SMS認証・本人確認・画像認証（公式アカウント開設など） | 案内を表示して待つ | `HUMAN_ACTION_REQUIRED` で即終了 → `loa wait` |
 | 自動で読めない値 | 貼り付けウィンドウ（伏せ字）→ キーチェーン | 同上 |
 | 破壊的操作 | 承認ダイアログを出して待つ | `APPROVAL_REQUIRED` で即終了 → `loa wait` |
 | 利用規約への同意（初回） | 承認ダイアログ（規約名とリンクを表示） | 同上 |
@@ -269,17 +274,18 @@ loa terms ls                    # 承認済みの利用規約一覧
 |---|
 | チャネル削除（`channel rm`） |
 | LIFFアプリ削除（`liff rm`） |
-| チャネルシークレット・アクセストークンの再発行（コマンドは未提供。方針のみ定義） |
+| チャネルアクセストークン（長期）の再発行（`channel issue-token --reissue`。初回の発行は承認不要） |
+| チャネルシークレットの再発行（コマンドは未提供。方針のみ定義） |
 | Webhook URLの変更（既存の値があり、違う値にする場合） |
 | 公式アカウントのメンバー追加（招待URL発行）・削除 |
 | 公式アカウントの応答設定の変更 |
-| Messaging APIの有効化（取り消しできないため） |
+| Messaging APIの有効化（取り消しできないため。すでに利用中なら何も変えないので不要） |
 | `apply` で上記のいずれかを含む場合（`--prune` による削除を含む） |
 
 - 承認が必要かどうかは**操作の種類でRust側の単一のゲートが決める**。ブラウザのシナリオもLINE APIの呼び出しも同じゲートを通る。シナリオYAMLの記述では変えられない（変更点8）
 - コマンドごとに使うシナリオの `operation` を固定する。合わないシナリオは実行しない
 - 削除・再発行などの文言のボタンは、それを許された `operation` のシナリオでしか押せない
-- 承認が必要なブラウザ操作は、送信直前に画面上の対象（名前・ID）を `confirm_target` で照合し、承認した内容と違えば止める
+- 承認が必要なブラウザ操作は、送信直前に画面上の対象（名前・ID）を `confirm_target` で照合し、承認した内容と違えば止める。対象が画面のどこにも出ないページ（公式アカウントの同意画面など）は、`url: true` で URL の ID と照合する
 - 承認ダイアログには、対象（アカウント名・チャネル名・ID）と変更内容（変更前→変更後）を表示する
 - 承認を無効化する設定・フラグは設けない
 - 例外は `loa selftest` のみ。selftest 用プロバイダー配下の削除を、開始時に1回まとめて承認する
@@ -453,7 +459,7 @@ URL に埋め込む変数は自動でエスケープされ、host やパスの�
 | `agree_terms` | 利用規約の同意。初回は承認ダイアログ、以降は自動（4-3） |
 | `if_exists` | あれば `then`、なければ `else`。`wait_ms` で少し待てる |
 | `if_set` | 入力変数が空でなければ `then`（任意項目の更新用） |
-| `confirm_target` | 送信前に画面上の対象（名前・ID）を照合。承認が必要な操作では必須 |
+| `confirm_target` | 送信前に画面上の対象（名前・ID）を照合。承認が必要な操作では必須。`url: true` と `pattern` で URL から読むこともできる |
 | `locked_if_exists` | 要素があれば `LOCKED_BY_REVIEW` で止める（ミニアプリの審査中など） |
 | `assert` `verify` | 期待した状態か確認。違えば `UI_CHANGED` |
 

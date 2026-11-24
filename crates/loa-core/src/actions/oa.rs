@@ -1,12 +1,11 @@
 //! LINE Official Accounts (LINE Official Account Manager, browser only).
 
-use super::{Ctx, planned, vars};
+use super::{Ctx, KEY_CHANNEL_SECRET, planned, vars};
 use crate::error::{LoaError, Result};
 use crate::gate::ApprovalRequest;
 use crate::ops::{OpKind, PolicyContext};
 use crate::output::Envelope;
 use crate::resources::{ChannelRec, ChannelType, OaRec};
-use crate::secrets::SecretRef;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -432,32 +431,58 @@ pub fn enable_messaging_api(ctx: &mut Ctx<'_>, key: &str, provider: &str) -> Res
             json!({"enable_messaging_api": {"oa": name, "id": id, "provider": provider}, "approval_required": true}),
         ));
     }
-    let req =
-        ApprovalRequest::operation(OpKind::OaEnableMessagingApi, "Messaging APIを有効にします")
-            .target("公式アカウント", format!("{name} ({id})"))
-            .target("プロバイダー", provider)
-            .change("Messaging API", Some("無効".into()), Some("有効".into()))
-            .note("有効化は取り消せません。チャネルは後から別のプロバイダーへ移せません。");
-    ctx.approve(
-        OpKind::OaEnableMessagingApi,
-        &PolicyContext::default(),
-        Some(provider),
-        req,
+    // Already enabled: nothing changes on LINE, so there is nothing to approve (idempotent).
+    let now = ctx.scenario(
+        "oa.get.messaging_api",
+        OpKind::OaGet,
+        vars(&[("oa_id", &id)]),
     )?;
-    let out = ctx.scenario(
-        "oa.enable_messaging_api",
-        OpKind::OaEnableMessagingApi,
-        vars(&[("oa_id", &id), ("name", &name), ("provider", provider)]),
-    )?;
+    let already = now.str("status").as_deref() == Some(MESSAGING_API_ENABLED)
+        && now.str("channel_id").is_some();
+    let out = if already {
+        now
+    } else {
+        let req =
+            ApprovalRequest::operation(OpKind::OaEnableMessagingApi, "Messaging APIを有効にします")
+                .target("公式アカウント", format!("{name} ({id})"))
+                .target("プロバイダー", provider)
+                .change("Messaging API", Some("無効".into()), Some("有効".into()))
+                .note("有効化は取り消せません。チャネルは後から別のプロバイダーへ移せません。");
+        ctx.approve(
+            OpKind::OaEnableMessagingApi,
+            &PolicyContext::default(),
+            Some(provider),
+            req,
+        )?;
+        ctx.scenario(
+            "oa.enable_messaging_api",
+            OpKind::OaEnableMessagingApi,
+            vars(&[("oa_id", &id), ("name", &name), ("provider", provider)]),
+        )?
+    };
     let channel_id = out
         .str("channel_id")
         .ok_or_else(|| LoaError::ui_changed("Messaging APIチャネルのIDを読み取れませんでした"))?;
+    // The provider's channel list proves the channel belongs to it and gives the console name,
+    // which is often also the name of the service's LINE Login channel.
+    let listing = super::channel::fetch(ctx, provider)?;
+    let pname = listing.provider.clone();
+    let chan_name = match listing.cards.iter().find(|c| c.id == channel_id) {
+        Some(c) => c.name.clone(),
+        None if listing.cards.is_empty() => name.clone(),
+        None => {
+            return Err(LoaError::usage(format!(
+                "公式アカウント {name} のMessaging APIチャネル（{channel_id}）はプロバイダー {pname} にありません"
+            ))
+            .with_hint("Messaging APIを有効にしたときに選んだプロバイダーを --provider に指定してください"));
+        }
+    };
     let mut res = ctx.resources()?;
     let biz = res.business(&ctx.business_id);
-    biz.upsert_channel(
-        provider,
-        "",
-        &name,
+    biz.put_channel(
+        &pname,
+        &listing.provider_id,
+        &chan_name,
         ChannelRec {
             id: channel_id.clone(),
             ty: ChannelType::Messaging,
@@ -466,20 +491,28 @@ pub fn enable_messaging_api(ctx: &mut Ctx<'_>, key: &str, provider: &str) -> Res
     );
     let oa = biz.official_accounts.entry(name.clone()).or_default();
     oa.id = id.clone();
-    oa.messaging_provider = Some(provider.to_string());
-    oa.messaging_channel = Some(name.clone());
+    oa.messaging_provider = Some(pname.clone());
+    oa.messaging_channel = Some(channel_id.clone());
     ctx.save_resources(&res)?;
     let mut data =
-        json!({"oa": name, "provider": provider, "channel_id": channel_id, "channel": name});
-    if let Some(s) = out.secrets.get("channel_secret") {
-        let r = SecretRef::new(provider, &name, "channel_secret");
-        ctx.secrets.set(&r.store_key(), s)?;
-        data["secret_ref"] = json!(r.uri());
+        json!({"oa": name, "provider": pname, "channel_id": channel_id, "channel": chan_name});
+    if let Some(s) = out.secrets.get(KEY_CHANNEL_SECRET) {
+        data["secret_ref"] = json!(super::channel::store_secret(
+            ctx,
+            &pname,
+            &channel_id,
+            KEY_CHANNEL_SECRET,
+            s
+        )?);
     }
-    Ok(Envelope::new("oa", "updated", data).with_next(format!(
-        "loa webhook set --channel \"{name}\" --provider {provider} --url <URL>"
+    let action = if already { "unchanged" } else { "updated" };
+    Ok(Envelope::new("oa", action, data).with_next(format!(
+        "loa webhook set --channel {channel_id} --provider \"{pname}\" --url <URL>"
     )))
 }
+
+/// Status shown by the Messaging API settings page once the API is enabled.
+const MESSAGING_API_ENABLED: &str = "利用中";
 
 #[cfg(test)]
 mod tests {

@@ -231,10 +231,12 @@ impl Env {
                 }
             }
         }
-        for name in ["resources.json", "terms.json", "config.toml"] {
-            s.push_str(
-                &std::fs::read_to_string(self.home.join("data").join(name)).unwrap_or_default(),
-            );
+        for name in ["state/resources.json", "state/terms.json", "config.toml"] {
+            let f = self.home.join("data").join(name);
+            if name != "config.toml" {
+                assert!(f.is_file(), "missing {}", f.display());
+            }
+            s.push_str(&std::fs::read_to_string(f).unwrap_or_default());
         }
         s
     }
@@ -346,9 +348,10 @@ fn console_flow() {
         !env.all_task_files().contains(&secret),
         "secret leaked to state files"
     );
+    // secrets are keyed by channel id: names are not unique and can change
     assert_eq!(
         r.1["data"]["secret_ref"],
-        "loa://loa-e2e/e2e-login/channel_secret"
+        format!("loa://loa-e2e/{cid}/channel_secret")
     );
 
     // messaging channels are created from an official account, not here
@@ -590,8 +593,26 @@ fn official_account_flow() {
     // log in once through any page
     let r = env.run_done(&["provider", "create", "--name", "loa-oa"]);
     assert_code(&r, 0);
+    // the service's LINE Login channel has the name the official account will get
+    let r = env.run_done(&[
+        "channel",
+        "create",
+        "--provider",
+        "loa-oa",
+        "--type",
+        "login",
+        "--name",
+        "E2E Shop",
+        "--description",
+        "shop login",
+    ]);
+    assert_code(&r, 0);
+    let login = r.1["data"]["id"].as_str().unwrap().to_string();
 
-    // 1. account creation pauses for the person (here: the test plays that role)
+    // 1. account creation pauses for the person twice: the form, then a reCAPTCHA image check
+    //    after 完了 (here the test plays that role). The confirmation page shows an email address,
+    //    so its "@" must not pass for the new basic ID.
+    env.post("/__flag?name=recaptcha&value=1", "");
     let r = env.run(&[
         "oa",
         "create",
@@ -600,25 +621,109 @@ fn official_account_flow() {
         "--company",
         "E2E Inc.",
     ]);
-    let mut r = r;
-    for _ in 0..3 {
-        if r.0 == 11 {
-            env.human(&[
-                "find", "role", "button", "click", "--name", "確認", "--exact",
-            ]);
-            let task = r.1["task"].as_str().unwrap().to_string();
-            r = env.run(&["wait", &task, "--timeout", "120"]);
-        } else if matches!(r.0, 10 | 12) {
-            let task = r.1["task"].as_str().unwrap().to_string();
-            r = env.run(&["wait", &task, "--timeout", "120"]);
-        }
-    }
+    assert_code(&r, 11);
+    let task = r.1["task"].as_str().unwrap().to_string();
+    let click_confirm = || {
+        env.human(&[
+            "find", "role", "button", "click", "--name", "確認", "--exact",
+        ])
+    };
+    click_confirm();
+    // `loa wait` follows the task to the end, so watch for the second human wait with short waits
+    let asked = (0..60).any(|_| {
+        let r = env.run(&["wait", &task, "--timeout", "2"]);
+        assert_ne!(r.0, 0, "created without the image check: {}", r.1);
+        r.0 == 14
+            && r.1["detail"]["hint"]
+                .as_str()
+                .is_some_and(|h| h.contains("reCAPTCHA"))
+    });
+    assert!(asked, "the reCAPTCHA check must wait for the person");
+    click_confirm();
+    let r = env.run(&["wait", &task, "--timeout", "120"]);
     assert_code(&r, 0);
     let oid = r.1["data"]["id"].as_str().unwrap().to_string();
-    assert!(oid.starts_with('@'), "{}", r.1);
+    assert!(oid.starts_with('@') && !oid.contains("example"), "{}", r.1);
     assert_eq!(env.state()["oas"][&oid]["name"], "E2E Shop");
+    env.post("/__flag?name=recaptcha&value=0", "");
 
-    // 2. profile + settings (no approval needed)
+    // 2. Messaging API: the new account first shows the information-use consent (terms), then
+    //    the enable flow (approval + API terms)
+    let r = env.run_done(&[
+        "oa",
+        "enable-messaging-api",
+        "E2E Shop",
+        "--provider",
+        "loa-oa",
+    ]);
+    assert_code(&r, 0);
+    assert_eq!(r.1["action"], "updated");
+    let st = env.state();
+    assert_eq!(st["oas"][&oid]["consented"], true);
+    let ch = st["oas"][&oid]["messaging"]["channel_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(r.1["data"]["channel_id"], ch.as_str());
+    assert_eq!(r.1["data"]["channel"], "E2E Shop");
+    let secret = secret_of(&st, &ch);
+    let login_secret = secret_of(&st, &login);
+    assert!(!r.2.contains(&secret));
+    let terms = std::fs::read_to_string(env.home.join("data/state/terms.json")).unwrap();
+    assert!(
+        terms.contains("line-official-account-information-use"),
+        "{terms}"
+    );
+
+    // already enabled: nothing to approve, the channel is read again (idempotent)
+    env.set_approve("deny");
+    let r = env.run_done(&[
+        "oa",
+        "enable-messaging-api",
+        "E2E Shop",
+        "--provider",
+        "loa-oa",
+    ]);
+    assert_code(&r, 0);
+    assert_eq!(r.1["action"], "unchanged");
+    assert_eq!(r.1["data"]["channel_id"], ch.as_str());
+    env.set_approve("approve");
+
+    // 3. the Messaging API channel and the LINE Login channel share the name "E2E Shop":
+    //    each keeps its own record and secret
+    let r = env.run_done(&["channel", "get", &ch, "--provider", "loa-oa"]);
+    assert_code(&r, 0);
+    assert_eq!(r.1["data"]["name"], "E2E Shop");
+    assert_eq!(r.1["data"]["type"], "messaging");
+    let r = env.run_done(&["channel", "get", &login, "--provider", "loa-oa"]);
+    assert_code(&r, 0);
+    assert_eq!(r.1["data"]["name"], "E2E Shop");
+    assert_eq!(r.1["data"]["type"], "login");
+    let r = env.run(&["channel", "get", "E2E Shop", "--provider", "loa-oa"]);
+    assert_code(&r, 2);
+    for (id, want) in [(&ch, &secret), (&login, &login_secret)] {
+        let r = env.run(&[
+            "env",
+            "write",
+            "--channel",
+            id,
+            "--provider",
+            "loa-oa",
+            "--out",
+            "both.env",
+            "--map",
+            "S=channel.secret",
+            "--map",
+            "N=channel.name",
+        ]);
+        assert_code(&r, 0);
+        let file = std::fs::read_to_string(env.home.join("both.env")).unwrap();
+        assert!(file.contains(want.as_str()), "{id}: {file}");
+        assert!(file.contains("N=\"E2E Shop\""), "{id}: {file}");
+        assert!(!r.2.contains(want.as_str()));
+    }
+
+    // 4. profile + settings (no approval needed)
     let r = env.run_done(&[
         "oa",
         "update",
@@ -635,7 +740,7 @@ fn official_account_flow() {
     assert_eq!(st["oas"][&oid]["status_message"], "hello");
     assert_eq!(st["oas"][&oid]["join_groups"], false);
 
-    // 3. response mode needs approval
+    // 5. response mode needs approval
     env.set_approve("deny");
     let r = env.run_done(&["oa", "update", "E2E Shop", "--response.mode", "webhook"]);
     assert_code(&r, 13);
@@ -662,26 +767,12 @@ fn official_account_flow() {
     assert_eq!(env.state()["oas"][&oid]["status_message"], "hello");
     env.set_approve("approve");
 
-    // 4. Messaging API (approval + terms), then webhook through the API
-    let r = env.run_done(&[
-        "oa",
-        "enable-messaging-api",
-        "E2E Shop",
-        "--provider",
-        "loa-oa",
-    ]);
-    assert_code(&r, 0);
-    let ch = env.state()["oas"][&oid]["messaging"]["channel_id"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let secret = secret_of(&env.state(), &ch);
-    assert!(!r.2.contains(&secret));
+    // 6. webhook through the API
     let r = env.run_done(&[
         "webhook",
         "set",
         "--channel",
-        "E2E Shop",
+        &ch,
         "--url",
         "https://example.com/hook",
     ]);
@@ -696,7 +787,7 @@ fn official_account_flow() {
         "webhook",
         "set",
         "--channel",
-        "E2E Shop",
+        &ch,
         "--url",
         "https://example.com/other",
     ]);
@@ -706,10 +797,91 @@ fn official_account_flow() {
         "https://example.com/hook"
     );
     env.set_approve("approve");
-    let r = env.run(&["webhook", "test", "--channel", "E2E Shop"]);
+    let r = env.run(&["webhook", "test", "--channel", &ch]);
     assert_code(&r, 0);
 
-    // 5. member invite needs approval and returns an invitation URL
+    // 7. long-lived channel access token: issued once, then read again (never reissued
+    //    silently); reissuing needs approval
+    let r = env.run_done(&["channel", "issue-token", &ch, "--provider", "loa-oa"]);
+    assert_code(&r, 0);
+    assert_eq!(
+        r.1["data"]["token_ref"],
+        format!("loa://loa-oa/{ch}/channel_access_token")
+    );
+    let token = env.state()["channels"][&ch]["access_token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(!r.2.contains(&token), "token leaked to output");
+    assert!(env.secrets_file().contains(&token));
+    assert!(
+        !env.all_task_files().contains(&token),
+        "token leaked to state files"
+    );
+    let r = env.run_done(&["channel", "issue-token", &ch, "--provider", "loa-oa"]);
+    assert_code(&r, 0);
+    assert_eq!(env.state()["channels"][&ch]["access_token"], token.as_str());
+    env.set_approve("deny");
+    let r = env.run_done(&[
+        "channel",
+        "issue-token",
+        &ch,
+        "--provider",
+        "loa-oa",
+        "--reissue",
+    ]);
+    assert_code(&r, 13);
+    assert_eq!(env.state()["channels"][&ch]["access_token"], token.as_str());
+    env.set_approve("approve");
+    let r = env.run_done(&[
+        "channel",
+        "issue-token",
+        &ch,
+        "--provider",
+        "loa-oa",
+        "--reissue",
+    ]);
+    assert_code(&r, 0);
+    let token2 = env.state()["channels"][&ch]["access_token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_ne!(token, token2);
+    assert!(!r.2.contains(&token2));
+    let r = env.run(&[
+        "env",
+        "write",
+        "--channel",
+        &ch,
+        "--provider",
+        "loa-oa",
+        "--out",
+        "bot.env",
+        "--map",
+        "LINE_CHANNEL_ACCESS_TOKEN=channel.access_token",
+    ]);
+    assert_code(&r, 0);
+    let file = std::fs::read_to_string(env.home.join("bot.env")).unwrap();
+    assert!(file.contains(&token2), "{file}");
+    assert!(!r.2.contains(&token2));
+    // LINE Login channels have no such token
+    let r = env.run(&["channel", "issue-token", &login, "--provider", "loa-oa"]);
+    assert_code(&r, 2);
+
+    // 8. link the official account to the LINE Login channel (friendship option)
+    let r = env.run_done(&[
+        "channel",
+        "update",
+        &login,
+        "--provider",
+        "loa-oa",
+        "--linked-oa",
+        "E2E Shop",
+    ]);
+    assert_code(&r, 0);
+    assert_eq!(env.state()["channels"][&login]["linked_oa"], oid.as_str());
+
+    // 9. member invite needs approval and returns an invitation URL
     let r = env.run_done(&[
         "oa",
         "update",

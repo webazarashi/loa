@@ -271,7 +271,20 @@ impl Ctx<'_> {
             }
             Step::Assert(c) => self.check(c)?,
             Step::ConfirmTarget(c) => {
-                self.locator(&c.target)?;
+                if c.url {
+                    if !c.target.is_empty() {
+                        return Err(self.err(
+                            "confirm_target の url: true と要素の指定は同時に使えません".into(),
+                        ));
+                    }
+                    let p = c.pattern.as_deref().ok_or_else(|| {
+                        self.err("confirm_target の url: true には pattern が必要です".into())
+                    })?;
+                    regex::Regex::new(p)
+                        .map_err(|e| self.err(format!("confirm_target.pattern: {e}")))?;
+                } else {
+                    self.locator(&c.target)?;
+                }
                 self.vars(&c.equals)?;
                 if self.depth == 0 {
                     self.confirm_seen = true;
@@ -367,6 +380,23 @@ mod tests {
         let steps = "  - confirm_target: { label: \"チャネル名\", equals: \"{{name}}\" }\n  - click: { role: button, name: \"削除\" }\n";
         let s = sc("channel.delete", steps, "  {}\n");
         assert!(validate(&s, OpKind::ChannelDelete).is_ok());
+    }
+
+    #[test]
+    fn confirm_target_from_url_needs_a_pattern_and_no_element() {
+        let click = "  - click: { role: button, name: \"削除\" }\n";
+        let ok = format!(
+            "  - confirm_target: {{ url: true, pattern: \"/channel/(\\\\d+)\", equals: \"{{{{name}}}}\" }}\n{click}"
+        );
+        let s = sc("channel.delete", &ok, "  {}\n");
+        assert!(validate(&s, OpKind::ChannelDelete).is_ok());
+        for bad in [
+            "  - confirm_target: { url: true, equals: \"{{name}}\" }\n",
+            "  - confirm_target: { url: true, label: \"チャネル名\", pattern: \"(x)\", equals: \"{{name}}\" }\n",
+        ] {
+            let s = sc("channel.delete", &format!("{bad}{click}"), "  {}\n");
+            assert!(validate(&s, OpKind::ChannelDelete).is_err(), "{bad}");
+        }
     }
 
     #[test]

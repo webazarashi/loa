@@ -69,7 +69,7 @@ fn login_channel(ctx: &mut Ctx<'_>, key: &str, provider: Option<&str>) -> Result
         ChannelType::Miniapp => Err(LoaError::usage(
             "LINEミニアプリチャネルのLIFF IDは内部チャネルごとに固定です。loa miniapp get / update を使ってください",
         )
-        .with_next(format!("loa miniapp get {}", hit.name))),
+        .with_next(format!("loa miniapp get {}", hit.key))),
         ChannelType::Messaging => Err(LoaError::usage(
             "Messaging APIチャネルにはLIFFアプリを追加できません。LINEログインチャネルを指定してください",
         )),
@@ -91,7 +91,7 @@ fn remember(ctx: &Ctx<'_>, hit: &ChannelHit, apps: &[LiffApp]) -> Result<()> {
     let mut res = ctx.resources()?;
     if let Some(c) = res
         .business(&ctx.business_id)
-        .channel_mut(&hit.provider, &hit.name)
+        .channel_mut(&hit.provider, &hit.key)
     {
         c.liff = apps
             .iter()
@@ -163,7 +163,7 @@ pub fn add(ctx: &mut Ctx<'_>, a: &AddArgs, ensure: bool) -> Result<Envelope> {
             ))
             .with_next(format!(
                 "loa liff ensure --channel {} --name {} --url {}",
-                hit.name, a.name, a.url
+                hit.key, a.name, a.url
             )));
         }
         let want_size = input.size.clone().unwrap_or_default();
@@ -215,7 +215,7 @@ pub fn add(ctx: &mut Ctx<'_>, a: &AddArgs, ensure: bool) -> Result<Envelope> {
     )
     .with_next(format!(
         "loa env write --channel {} --out .env.local --map LIFF_ID=liff.{}.id",
-        hit.name, a.name
+        hit.key, a.name
     )))
 }
 

@@ -186,6 +186,7 @@ fn run(cli: Cli) -> Result<Option<Outcome>> {
                 description,
                 email,
                 callback_urls,
+                linked_oa,
             } => Command::ChannelUpdate(channel::UpdateArgs {
                 channel,
                 provider,
@@ -193,8 +194,18 @@ fn run(cli: Cli) -> Result<Option<Outcome>> {
                 description,
                 email,
                 callback_urls,
+                linked_oa,
             }),
             ChannelCmd::Rm { channel, provider } => Command::ChannelRm { channel, provider },
+            ChannelCmd::IssueToken {
+                channel,
+                provider,
+                reissue,
+            } => Command::ChannelIssueToken {
+                channel,
+                provider,
+                reissue,
+            },
         }),
         Cmd::Liff(c) => Some(match c {
             LiffCmd::Ls { channel, provider } => Command::LiffList { channel, provider },
@@ -309,6 +320,7 @@ fn create_args(a: ChannelCreateArgs) -> channel::CreateArgs {
         description: a.description,
         email: a.email,
         callback_urls: a.callback_urls,
+        linked_oa: a.linked_oa,
     }
 }
 
