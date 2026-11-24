@@ -485,6 +485,23 @@
       },
       "type": "object"
     },
+    "OpenMenuStep": {
+      "properties": {
+        "css": {
+          "description": "CSS selector of the element that opens the menu (must match exactly one element).",
+          "type": "string"
+        },
+        "reveals": {
+          "$ref": "#/$defs/Locator",
+          "description": "Element that appears once the menu is open."
+        }
+      },
+      "required": [
+        "css",
+        "reveals"
+      ],
+      "type": "object"
+    },
     "OutputSpec": {
       "additionalProperties": false,
       "properties": {
@@ -735,6 +752,19 @@
           },
           "required": [
             "click"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Open a menu that only shows information (e.g. the account menu behind an avatar), allowed\nin read-only operations. CSS only: the runner refuses elements that are, or sit inside, a\nlink, button, form or input, and waits for `reveals` to appear.",
+          "properties": {
+            "open_menu": {
+              "$ref": "#/$defs/OpenMenuStep"
+            }
+          },
+          "required": [
+            "open_menu"
           ],
           "type": "object"
         },
