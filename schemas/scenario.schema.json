@@ -170,6 +170,10 @@
             "null"
           ]
         },
+        "url": {
+          "description": "Read the target from the current URL with `pattern` (pages that show it nowhere else,\ne.g. a consent page in front of the account).",
+          "type": "boolean"
+        },
         "within": {
           "anyOf": [
             {
