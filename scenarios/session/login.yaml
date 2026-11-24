@@ -4,7 +4,16 @@ min_loa_version: "0.1.0"
 operation: session.login
 status: verified
 description: LINE Developersコンソールを開き、未ログインなら人のログインを待つ
+outputs:
+  account: { type: string }
 steps:
   - goto: "https://developers.line.biz/console/"
   - require_login: true
   - wait_url: "**/console/**"
+  # 名前は、ヘッダーのアイコン（role の無い画像）を押すと開くメニューにだけ出る
+  - if_exists:
+      css: ".profile .kv-dropdown > img"
+      wait_ms: 5000
+      then:
+        - open_menu: { css: ".profile .kv-dropdown > img", reveals: { css: ".profile .user-info .name" } }
+        - read: { css: ".profile .user-info .name", into: account, optional: true }

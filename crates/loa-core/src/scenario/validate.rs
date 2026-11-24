@@ -174,6 +174,13 @@ impl Ctx<'_> {
             Step::RequireLogin(_) => {}
             Step::WaitUrl(u) | Step::WaitText(u) => self.vars(u)?,
             Step::WaitFor(l) => self.locator(l)?,
+            Step::OpenMenu(m) => {
+                if m.css.trim().is_empty() {
+                    return Err(self.err("open_menu には css を指定してください".into()));
+                }
+                self.vars(&m.css)?;
+                self.locator(&m.reveals)?;
+            }
             Step::Click(l) => {
                 self.locator(l)?;
                 if !self.op.is_mutating() {
@@ -372,6 +379,26 @@ mod tests {
         let steps = "  - if_exists:\n      text: \"x\"\n      then:\n        - confirm_target: { label: \"チャネル名\", equals: \"{{name}}\" }\n  - click: { role: button, name: \"削除\" }\n";
         let s = sc("channel.delete", steps, "  {}\n");
         assert!(validate(&s, OpKind::ChannelDelete).is_err());
+    }
+
+    #[test]
+    fn read_only_operations_may_open_a_menu_but_not_click_it() {
+        let open =
+            "  - open_menu: { css: \".profile > img\", reveals: { css: \".profile .name\" } }\n";
+        let s = sc("session.whoami", open, "  {}\n");
+        assert!(validate(&s, OpKind::SessionWhoami).is_ok());
+        let s = sc(
+            "session.whoami",
+            "  - click: { css: \".profile > img\" }\n",
+            "  {}\n",
+        );
+        assert!(validate(&s, OpKind::SessionWhoami).is_err());
+        let s = sc(
+            "session.whoami",
+            "  - open_menu: { css: \"\", reveals: { css: \".profile .name\" } }\n",
+            "  {}\n",
+        );
+        assert!(validate(&s, OpKind::SessionWhoami).is_err());
     }
 
     #[test]

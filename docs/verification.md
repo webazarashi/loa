@@ -109,8 +109,8 @@ loa oa update "loa テスト" --members.add test --members.role operator   # 招
 
 | 項目 | 状況 |
 |---|---|
-| 実画面で確認済みのシナリオ（`verified`） | provider.list・provider.create・channel.list・channel.create.login・channel.get・channel.update.basic・channel.update.callback・channel.delete・oa.list・session.login（2026-11-21〜24）。LIFF の作成・更新・削除（API）も selftest で通った |
-| 未確認のシナリオ（`provisional`） | 公式アカウントの取得・作成・更新・Messaging API の有効化、ミニアプリ、provider.update、session.whoami（アカウント名が `null` のまま） |
+| 実画面で確認済みのシナリオ（`verified`） | provider.list・provider.create・channel.list・channel.create.login・channel.get・channel.update.basic・channel.update.callback・channel.delete・oa.list・session.login・session.whoami（2026-11-21〜24）。LIFF の作成・更新・削除（API）も selftest で通った |
+| 未確認のシナリオ（`provisional`） | 公式アカウントの取得・作成・更新・Messaging API の有効化、ミニアプリ、provider.update |
 | macOS キーチェーンの許可ダイアログ | 署名なしやチーム ID の無い自己署名では、作り直すたびに許可を求められる。手元では `scripts/dev-sign.sh`（Apple Development 証明書）で署名すれば出ない。配布版は更新のたびに1回許可が要る（有料の Developer ID で署名すれば不要）。署名なしの loa をバックグラウンドの端末（Orca など）から起動すると、許可ダイアログが表示されないことがある |
 | Windows | 型検査と lint まで（`cargo clippy --target x86_64-pc-windows-gnu --no-default-features`）。`ring` の C コードは mingw がないため未コンパイル。実機では未確認 |
 | CI・Release ワークフロー | 未実行（push していないため） |

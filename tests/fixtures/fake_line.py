@@ -54,6 +54,12 @@ function edit(id){{document.getElementById(id).hidden=false;}}
 </script></body></html>"""
 
 
+# Real console (2026-11-24): the account name only exists after the avatar (an <img> with no role)
+# is clicked; the menu also holds a logout form next to it.
+PROFILE = """<header><div class="profile"><span class="kv-dropdown"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" width="24" height="24"
+onclick="if(!this.nextElementSibling){this.insertAdjacentHTML('afterend','<div class=&quot;content&quot;><div class=&quot;profile-link&quot;><hgroup class=&quot;user-info&quot;><h5 class=&quot;name&quot;>テスト 太郎</h5><h6 class=&quot;email&quot;>taro@example.com</h6></hgroup></div><form method=&quot;post&quot; action=&quot;/dev/logout&quot;><button class=&quot;logout-link&quot;>ログアウト</button></form></div>')}"></span></div></header>"""
+
+
 def kv(label, value, action=None, field=None, multiline=False, extra=""):
     """Developers console field (2026-11-23): one bare <label>, the value, and 編集 → 更新 / キャンセル
     in the same box. The label is not tied to the input."""
@@ -226,7 +232,7 @@ class H(BaseHTTPRequestHandler):
 <div class="kv-field"><label>プロバイダー名 <i></i></label><section><div class="field"><textarea name="name" placeholder="-"></textarea></div></section></div></section>
 <div role="contentinfo"><button type="button" onclick="document.getElementById('np').hidden=true">キャンセル</button><button type="submit">作成</button></div></form></div>
 <div role="contentinfo"><a href="/dev/console/">規約とポリシー</a></div>"""
-            return self.send(200, page("コンソール", body))
+            return self.send(200, page("コンソール", body, PROFILE))
         if parts == ["console", "provider", "create"] and method == "POST":
             f = self.form()
             pid = rid()

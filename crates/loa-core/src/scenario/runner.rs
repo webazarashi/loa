@@ -211,6 +211,35 @@ impl<'a> Runner<'a> {
                 self.act(&l, "click", None)?;
                 self.check_location()?;
             }
+            Step::OpenMenu(m) => {
+                let css = render(&m.css, &self.vars)?;
+                let reveals = self.render_locator(&m.reveals)?;
+                let js = menu_opener_js(&css);
+                let mut found = Value::Null;
+                let one = self.poll(|r| {
+                    found = r.eval(&js)?;
+                    Ok(found.get("count").and_then(Value::as_u64) == Some(1))
+                })?;
+                if !one {
+                    let n = found.get("count").and_then(Value::as_u64).unwrap_or(0);
+                    return Err(LoaError::ui_changed(format!(
+                        "メニューを開く要素（{css}）が {n} 個あり、1つに決まりません"
+                    )));
+                }
+                if let Some(tag) = found.get("blocked").and_then(Value::as_str) {
+                    return Err(LoaError::ui_changed(format!(
+                        "メニューを開く要素（{css}）が {tag} の中にあるため押しません。open_menu で押せるのは、リンク・ボタン・フォームの外にある要素だけです"
+                    )));
+                }
+                self.exec(vec!["click".into(), css.clone()])?;
+                if !self.poll(|r| r.exists(&reveals))? {
+                    return Err(LoaError::ui_changed(format!(
+                        "メニューが開きません: {}",
+                        reveals.describe()
+                    )));
+                }
+                self.check_location()?;
+            }
             Step::Fill(f) => {
                 let l = self.render_locator(&f.target)?;
                 let v = render(&f.value, &self.vars)?;
@@ -1182,6 +1211,22 @@ fn label_js(label: &str, scope: Option<&str>) -> String {
     )
 }
 
+/// Fixed script: the unique element matching `css`, and whether it is (inside) something that
+/// can change state when clicked: a link, button, form, field, or a control role.
+fn menu_opener_js(css: &str) -> String {
+    let c = serde_json::to_string(css).unwrap_or_else(|_| "\"\"".into());
+    format!(
+        r#"(() => {{
+  let els;
+  try {{ els = [...document.querySelectorAll({c})]; }} catch (e) {{ return {{ count: 0 }}; }}
+  els = els.filter(e => !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length));
+  if (els.length !== 1) return {{ count: els.length }};
+  const bad = els[0].closest('a[href],button,input,select,textarea,label,form,[contenteditable]:not([contenteditable=false]),[role=button],[role=link],[role=menuitem],[role=checkbox],[role=radio],[role=switch],[role=tab],[role=option]');
+  return {{ count: 1, blocked: bad ? bad.tagName.toLowerCase() : null }};
+}})()"#
+    )
+}
+
 /// Fixed script: links whose path matches the pattern → [{id, name, href}].
 fn list_js(pattern: &str) -> String {
     let p = serde_json::to_string(pattern).unwrap_or_else(|_| "\"\"".into());
@@ -1499,6 +1544,71 @@ mod tests {
             .map(String::from)
             .collect();
         assert!(b.calls.contains(&want), "{:?}", b.calls);
+    }
+
+    #[cfg(not(feature = "test-hooks"))]
+    #[test]
+    fn open_menu_clicks_a_plain_opener_and_waits_for_the_menu() {
+        let sc = scenario(
+            "session.whoami",
+            "steps:\n  - open_menu: { css: \".p > img\", reveals: { css: \".p .name\" } }\n",
+        );
+        let mut b = FakeBrowser {
+            current_url: "https://developers.line.biz/console/".into(),
+            ..Default::default()
+        };
+        b.responses
+            .push_back(Ok(json!({"result": {"count": 1, "blocked": null}})));
+        b.responses.push_back(Ok(json!({})));
+        b.responses.push_back(Ok(json!({"count": 1})));
+        let t = terms();
+        let r = Runner::new(
+            &mut b,
+            &NoHumanGate,
+            &t,
+            OpKind::SessionWhoami,
+            std::env::temp_dir(),
+        );
+        r.run(&sc, &Vars::new()).unwrap();
+        let want: Vec<String> = ["click", ".p > img"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        assert!(b.calls.contains(&want), "{:?}", b.calls);
+    }
+
+    #[cfg(not(feature = "test-hooks"))]
+    #[test]
+    fn open_menu_refuses_an_opener_inside_a_control() {
+        let sc = scenario(
+            "session.whoami",
+            "steps:\n  - open_menu: { css: \".p img\", reveals: { css: \".p .name\" } }\n",
+        );
+        let mut b = FakeBrowser {
+            current_url: "https://developers.line.biz/console/".into(),
+            ..Default::default()
+        };
+        b.responses
+            .push_back(Ok(json!({"result": {"count": 1, "blocked": "button"}})));
+        let t = terms();
+        let r = Runner::new(
+            &mut b,
+            &NoHumanGate,
+            &t,
+            OpKind::SessionWhoami,
+            std::env::temp_dir(),
+        );
+        let Err(e) = r.run(&sc, &Vars::new()) else {
+            panic!("an opener inside a button must be refused");
+        };
+        assert_eq!(e.code, Code::UiChanged);
+        assert!(
+            !b.calls
+                .iter()
+                .any(|c| c.first().map(String::as_str) == Some("click")),
+            "{:?}",
+            b.calls
+        );
     }
 
     #[cfg(not(feature = "test-hooks"))]

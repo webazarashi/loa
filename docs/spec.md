@@ -445,6 +445,7 @@ URL に埋め込む変数は自動でエスケープされ、host やパスの�
 | `goto` | ページを開く（許可リストを検査） |
 | `wait_url` `wait_for` `wait_text` | URL・要素・文字列を待つ |
 | `click` `fill` `select` `check` `upload` | 操作（`check` は `checked: true/false/{{変数}}`、`upload` はCSS指定可） |
+| `open_menu` | 情報を見せるだけのメニューを開く（ヘッダーのアイコンなど）。CSS 指定のみで、リンク・ボタン・フォーム・入力欄の中にある要素は押さない。開いたら `reveals` の要素が現れるのを待つ。読み取り専用の操作でも使える |
 | `read` `read_secret` `read_url` `read_list` | 値の読み取り（`read_list` はリンクの一覧から名前とIDを読む） |
 | `require_login` | 未ログインなら人の出番へ |
 | `human` | 案内文を出し、`until` の条件が満たされるまで人の操作を待つ（SMS認証など） |

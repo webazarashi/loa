@@ -273,6 +273,7 @@ fn console_flow() {
     let r = env.run(&["whoami"]);
     assert_code(&r, 0);
     assert_eq!(r.1["data"]["logged_in"], true, "{}", r.1);
+    assert_eq!(r.1["data"]["account"], "テスト 太郎", "{}", r.1);
 
     // 3. ensure is a no-op when it exists
     let r = env.run(&["provider", "ensure", "--name", "loa-e2e"]);

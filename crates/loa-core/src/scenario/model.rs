@@ -152,6 +152,10 @@ pub enum Step {
     WaitFor(Locator),
     WaitText(String),
     Click(Locator),
+    /// Open a menu that only shows information (e.g. the account menu behind an avatar), allowed
+    /// in read-only operations. CSS only: the runner refuses elements that are, or sit inside, a
+    /// link, button, form or input, and waits for `reveals` to appear.
+    OpenMenu(OpenMenuStep),
     Fill(FillStep),
     Select(ValueStep),
     Check(CheckStep),
@@ -187,6 +191,7 @@ impl Step {
             Step::WaitFor(_) => "wait_for",
             Step::WaitText(_) => "wait_text",
             Step::Click(_) => "click",
+            Step::OpenMenu(_) => "open_menu",
             Step::Fill(_) => "fill",
             Step::Select(_) => "select",
             Step::Check(_) => "check",
@@ -205,6 +210,14 @@ impl Step {
             Step::IfSet(_) => "if_set",
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub struct OpenMenuStep {
+    /// CSS selector of the element that opens the menu (must match exactly one element).
+    pub css: String,
+    /// Element that appears once the menu is open.
+    pub reveals: Locator,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
