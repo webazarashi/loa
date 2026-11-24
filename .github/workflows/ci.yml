@@ -10,7 +10,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  AGENT_BROWSER_VERSION: "0.41.2"
+  AGENT_BROWSER_VERSION: "0.44.0"
 
 jobs:
   check:

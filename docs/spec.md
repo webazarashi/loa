@@ -18,7 +18,7 @@ v1.0 からの変更は「v1.1 での変更点」にまとめ、本文にも反�
 | 実装方針 | 決まった手順（シナリオ）をコードとYAMLで作り切る。毎回同じ動きをする決定的なツール |
 | 対象OS | macOS / Windows |
 | 言語 | Rust |
-| ブラウザ操作 | agent-browser（loaからCLIとして呼び出す。対応版 0.41 系） |
+| ブラウザ操作 | agent-browser（loaからCLIとして呼び出す。対応版 0.41〜0.44） |
 | ライセンス | **AGPL-3.0** |
 | 署名 | OSのコード署名なし（Apple Developer ID・Windowsコード署名なし）。シナリオ配布物は minisign で署名 |
 

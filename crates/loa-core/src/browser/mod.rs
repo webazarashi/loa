@@ -13,7 +13,7 @@ use zeroize::Zeroizing;
 pub use snapshot::{Node, Snapshot};
 
 /// agent-browser versions loa is tested against.
-pub const SUPPORTED_AGENT_BROWSER: &str = ">=0.41.0, <0.42.0";
+pub const SUPPORTED_AGENT_BROWSER: &str = ">=0.41.0, <0.45.0";
 pub const NAMESPACE: &str = "loa";
 
 #[derive(Debug, Clone, PartialEq)]
@@ -337,7 +337,7 @@ pub fn resolve_binary(explicit: Option<&Path>) -> Result<PathBuf> {
         }
     }
     Err(LoaError::setup("agent-browser が見つかりません").with_hint(
-        "npm install -g agent-browser@0.41 または brew install agent-browser で導入し、loa setup を実行してください",
+        "npm install -g agent-browser@0.44 または brew install agent-browser で導入し、loa setup を実行してください",
     ))
 }
 
@@ -360,7 +360,9 @@ pub fn check_version(bin: &Path) -> Result<semver::Version> {
             Code::SetupRequired,
             format!("agent-browser {ver} には対応していません（対応: {SUPPORTED_AGENT_BROWSER}）"),
         )
-        .with_hint("npm install -g agent-browser@0.41 で対応バージョンを入れてください")
+        .with_hint(
+            "npm install -g agent-browser@0.44 で対応バージョン（0.41〜0.44）を入れてください",
+        )
         .with_next("loa setup"));
     }
     Ok(ver)

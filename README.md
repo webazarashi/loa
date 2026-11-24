@@ -18,7 +18,7 @@ LINE Developers コンソールと LINE公式アカウントの作成・更新�
 ## 必要なもの
 
 - macOS または Windows
-- Node.js と agent-browser 0.41 系（`npm install -g agent-browser`）
+- Node.js と agent-browser 0.41〜0.44（`npm install -g agent-browser@0.44`）
 - LINE ビジネス ID
 
 ## インストール
@@ -139,7 +139,10 @@ loa selftest             # テスト用プロバイダーで一通り流し、�
 ```bash
 cargo test --workspace                                   # 単体テスト
 cargo test -p loa-cli --features test-hooks --test e2e -- --ignored --test-threads=1
+cargo build --release -p loa-cli && scripts/dev-sign.sh  # macOS: 手元のビルドに署名
 ```
+
+macOS のキーチェーンは、Apple が発行した証明書（チーム ID 付き）で署名されていないアプリを、ビルドごとのハッシュで区別します。署名しないと、作り直すたびにキーチェーンの許可を求められます。`scripts/dev-sign.sh` は、Xcode で作れる無料の「Apple Development」証明書で署名します。
 
 E2E テストは、本物の `loa` と headless の agent-browser を、偽の LINE コンソール（[tests/fixtures/fake_line.py](tests/fixtures/fake_line.py)）に向けて動かします。本物の LINE には接続しません。テスト用の差し替え（偽コンソールへの接続、自動承認など）は cargo feature `test-hooks` の中だけにあり、リリースビルドではコンパイルできません。
 
