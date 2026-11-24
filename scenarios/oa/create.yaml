@@ -1,9 +1,9 @@
 id: oa.create
-version: 1
+version: 2
 min_loa_version: "0.1.0"
 operation: oa.create
 status: provisional
-description: 公式アカウントを開設する。SMS認証などが出たら人の操作を待つ
+description: 公式アカウントを開設する。SMS認証や画像認証（reCAPTCHA）が出たら人の操作を待つ
 inputs:
   name: { type: string, required: true }
   category: { type: string, default: "" }
@@ -44,5 +44,16 @@ steps:
       name: "完了"
       click: true
       link: "https://terms2.line.me/official_account_terms_jp?lang=ja"
-  - wait_text: "@"
-  - read: { label: "ベーシックID", pattern: "(@[A-Za-z0-9._-]+)", into: oa_id }
+  # 2026-11-24 確認: 「完了」のあと reCAPTCHA の画像認証が出ることがある。出なければ完了画面
+  # （/form/entry/unverified/complete）がすぐ開く。確認画面のメールアドレスにも「@」があるので、
+  # 作成後にしか出ない見出しで待つ
+  - if_exists:
+      text: "LINE公式アカウントが作成されました。"
+      wait_ms: 10000
+      else:
+        - human:
+            message: "ブラウザに画像認証（reCAPTCHA）が出ていたら、画面の指示どおりに完了してください"
+            until: { url_matches: "**/form/entry/unverified/complete**" }
+  - wait_text: "LINE公式アカウントが作成されました"
+  # ベーシックIDは完了画面の表のセル（例 @247peamj）。メールアドレスの「@」は拾わない
+  - read: { css: "main", pattern: "(?:^|[^A-Za-z0-9._%+-])(@[0-9a-z][0-9a-z._-]*)", into: oa_id }

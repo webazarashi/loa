@@ -1,0 +1,23 @@
+id: oa.get.messaging_api
+version: 1
+min_loa_version: "0.1.0"
+operation: oa.get
+status: verified
+description: 公式アカウントのMessaging APIの状態を読む。利用中ならチャネルIDとシークレットも読む（シークレットはキーチェーンへ）
+inputs:
+  oa_id: { type: string, required: true }
+outputs:
+  status: { type: string }
+  channel_id: { type: string }
+  channel_secret: { type: secret }
+steps:
+  - goto: "https://manager.line.biz/account/{{oa_id}}/setting/messaging-api"
+  - require_login: true
+  # 初めて開く公式アカウントでは「情報利用に関する同意について」が先に出て、ステータスは読めない。
+  # 同意は変更系の操作（oa.enable_messaging_api）でだけ行う
+  - read: { label: "ステータス", into: status, optional: true }
+  - if_exists:
+      text: "Channel ID"
+      then:
+        - read: { label: "Channel ID", pattern: "(\\d{10})", into: channel_id }
+        - read_secret: { label: "Channel secret", pattern: "([0-9a-f]{32})", into: channel_secret }

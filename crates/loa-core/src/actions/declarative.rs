@@ -208,7 +208,9 @@ enum Act {
     Miniapp(miniapp::UpdateArgs),
     Webhook {
         provider: String,
-        channel: String,
+        /// Official account whose Messaging API channel gets the URL (its id is known only
+        /// once the API is enabled, possibly earlier in the same apply).
+        oa: String,
         url: String,
     },
     OaUpdate(oa::UpdateArgs),
@@ -377,8 +379,8 @@ fn build(
             && let Some(url) = &m.webhook_url
         {
             let mut current: Option<String> = None;
-            if rec.messaging_channel.is_some()
-                && let Ok(hit) = ctx.find_channel(&o.name, Some(&m.provider))
+            if let Some(ch) = &rec.messaging_channel
+                && let Ok(hit) = ctx.find_channel(ch, Some(&m.provider))
                 && let Ok(token) = ctx.channel_token(&hit)
             {
                 current = ctx.api()?.webhook_get(&token).ok().map(|w| w.endpoint);
@@ -394,7 +396,7 @@ fn build(
                         approval,
                         act: Act::Webhook {
                             provider: m.provider.clone(),
-                            channel: o.name.clone(),
+                            oa: o.name.clone(),
                             url: url.clone(),
                         },
                         record: Record::None,
@@ -456,6 +458,7 @@ fn build(
                         description: c.description.clone(),
                         email: None,
                         callback_urls: c.callback_urls.clone(),
+                        linked_oa: None,
                     }),
                     record: Record::Channel { provider: p.name.clone(), channel: c.name.clone(), values: vals.clone() },
                 });
@@ -760,9 +763,17 @@ pub fn apply(ctx: &mut Ctx<'_>, file: &str, prune: bool) -> Result<Envelope> {
             Act::Miniapp(a) => miniapp::update(ctx, a),
             Act::Webhook {
                 provider: p,
-                channel: c,
+                oa: o,
                 url,
-            } => super::webhook::set(ctx, c, Some(p), url),
+            } => {
+                let ch = ctx
+                    .resources()?
+                    .business_ref(&ctx.business_id)
+                    .and_then(|b| b.official_accounts.get(o))
+                    .and_then(|r| r.messaging_channel.clone())
+                    .unwrap_or_else(|| o.clone());
+                super::webhook::set(ctx, &ch, Some(p), url)
+            }
             Act::OaUpdate(a) => oa::update(ctx, a),
             Act::ChannelDelete {
                 provider: p,

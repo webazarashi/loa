@@ -65,6 +65,60 @@ pub struct ProviderRec {
     pub ambiguous: BTreeMap<String, Vec<String>>,
 }
 
+impl ProviderRec {
+    /// Record a channel under its console name. A channel already known by id keeps its LIFF,
+    /// MINI App and applied maps, and its type when the new one is unknown.
+    pub fn put_channel(&mut self, name: &str, mut rec: ChannelRec) {
+        let known = self
+            .channels
+            .iter()
+            .find(|(_, c)| !rec.id.is_empty() && c.id == rec.id)
+            .map(|(k, _)| k.clone());
+        if let Some(old) = known.and_then(|k| self.channels.remove(&k)) {
+            if rec.liff.is_empty() {
+                rec.liff = old.liff;
+            }
+            if rec.miniapp.is_empty() {
+                rec.miniapp = old.miniapp;
+            }
+            if rec.applied.is_empty() {
+                rec.applied = old.applied;
+            }
+            if rec.ty == ChannelType::Unknown {
+                rec.ty = old.ty;
+            }
+        }
+        rec.display_name = Some(name.to_string());
+        let slot = if rec.id.is_empty() {
+            name.to_string()
+        } else {
+            rec.id.clone()
+        };
+        self.channels.insert(slot, rec);
+        self.reindex();
+    }
+
+    /// The one place that decides map keys: a channel is keyed by its name, or by its id when
+    /// another channel of the provider has the same name.
+    pub fn reindex(&mut self) {
+        let named: Vec<(String, ChannelRec)> = std::mem::take(&mut self.channels)
+            .into_iter()
+            .map(|(key, mut rec)| (rec.display_name.take().unwrap_or(key), rec))
+            .collect();
+        let mut ids: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for (name, rec) in &named {
+            ids.entry(name.clone()).or_default().push(rec.id.clone());
+        }
+        for (name, mut rec) in named {
+            let shared = ids[&name].len() > 1 && !rec.id.is_empty();
+            let key = if shared { rec.id.clone() } else { name.clone() };
+            rec.display_name = shared.then_some(name);
+            self.channels.insert(key, rec);
+        }
+        self.ambiguous = ids.into_iter().filter(|(_, v)| v.len() > 1).collect();
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct OaRec {
     pub id: String,
@@ -90,11 +144,15 @@ pub struct ResourceMap {
     pub businesses: BTreeMap<String, Business>,
 }
 
-/// A channel found by name.
+/// A channel found by name or id.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChannelHit {
     pub provider: String,
     pub provider_id: String,
+    /// Key in the local map: the name, or the id when several channels share the name. Use it
+    /// to address the channel again (map lookups, `--channel` in next steps).
+    pub key: String,
+    /// Name shown in the console.
     pub name: String,
     pub rec: ChannelRec,
 }
@@ -152,7 +210,8 @@ impl Business {
                     hits.push(ChannelHit {
                         provider: pname.clone(),
                         provider_id: p.id.clone(),
-                        name: cname.clone(),
+                        key: cname.clone(),
+                        name: c.display_name.clone().unwrap_or_else(|| cname.clone()),
                         rec: c.clone(),
                     });
                 }
@@ -167,45 +226,23 @@ impl Business {
         }
     }
 
-    pub fn upsert_channel(
-        &mut self,
-        provider: &str,
-        provider_id: &str,
-        name: &str,
-        rec: ChannelRec,
-    ) {
+    pub fn put_channel(&mut self, provider: &str, provider_id: &str, name: &str, rec: ChannelRec) {
         let p = self.providers.entry(provider.to_string()).or_default();
         if !provider_id.is_empty() {
             p.id = provider_id.to_string();
         }
-        let entry = p.channels.entry(name.to_string()).or_default();
-        let liff = std::mem::take(&mut entry.liff);
-        let miniapp = std::mem::take(&mut entry.miniapp);
-        let applied = std::mem::take(&mut entry.applied);
-        let old_ty = entry.ty;
-        *entry = rec;
-        if entry.liff.is_empty() {
-            entry.liff = liff;
-        }
-        if entry.miniapp.is_empty() {
-            entry.miniapp = miniapp;
-        }
-        if entry.applied.is_empty() {
-            entry.applied = applied;
-        }
-        if entry.ty == ChannelType::Unknown {
-            entry.ty = old_ty;
-        }
+        p.put_channel(name, rec);
     }
 
-    pub fn remove_channel(&mut self, provider: &str, name: &str) {
+    pub fn remove_channel(&mut self, provider: &str, key: &str) {
         if let Some(p) = self.providers.get_mut(provider) {
-            p.channels.remove(name);
+            p.channels.remove(key);
+            p.reindex();
         }
     }
 
-    pub fn channel_mut(&mut self, provider: &str, name: &str) -> Option<&mut ChannelRec> {
-        self.providers.get_mut(provider)?.channels.get_mut(name)
+    pub fn channel_mut(&mut self, provider: &str, key: &str) -> Option<&mut ChannelRec> {
+        self.providers.get_mut(provider)?.channels.get_mut(key)
     }
 }
 
@@ -231,7 +268,7 @@ mod tests {
 
     fn biz() -> Business {
         let mut b = Business::default();
-        b.upsert_channel(
+        b.put_channel(
             "acme",
             "1",
             "app",
@@ -241,7 +278,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        b.upsert_channel(
+        b.put_channel(
             "beta",
             "2",
             "app",
@@ -251,7 +288,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        b.upsert_channel(
+        b.put_channel(
             "acme",
             "1",
             "bot",
@@ -311,7 +348,7 @@ mod tests {
             .unwrap()
             .liff
             .insert("main".into(), "L1".into());
-        b.upsert_channel(
+        b.put_channel(
             "acme",
             "1",
             "app",
@@ -329,6 +366,63 @@ mod tests {
                 .liff["main"],
             "L1"
         );
+    }
+
+    /// A Messaging API channel is named after its official account, which often has the same
+    /// name as the service's LINE Login channel.
+    #[test]
+    fn channel_sharing_a_name_keeps_its_own_record() {
+        let mut b = biz();
+        b.channel_mut("acme", "app")
+            .unwrap()
+            .liff
+            .insert("main".into(), "L1".into());
+        b.put_channel(
+            "acme",
+            "",
+            "app",
+            ChannelRec {
+                id: "12".into(),
+                ty: ChannelType::Messaging,
+                ..Default::default()
+            },
+        );
+        let login = b.find_channel("10", Some("acme")).unwrap().unwrap();
+        assert_eq!(login.name, "app");
+        assert_eq!(login.rec.ty, ChannelType::Login);
+        assert_eq!(login.rec.liff["main"], "L1");
+        let messaging = b.find_channel("12", Some("acme")).unwrap().unwrap();
+        assert_eq!(messaging.name, "app");
+        assert_eq!(messaging.rec.ty, ChannelType::Messaging);
+        assert!(messaging.rec.liff.is_empty());
+        assert!(b.find_channel("app", Some("acme")).is_err());
+
+        // once the login channel is gone, the name addresses the messaging channel again
+        b.remove_channel("acme", &login.key);
+        let hit = b.find_channel("app", Some("acme")).unwrap().unwrap();
+        assert_eq!(hit.rec.id, "12");
+        assert_eq!(hit.name, "app");
+    }
+
+    #[test]
+    fn renamed_channel_is_found_by_its_new_name() {
+        let mut b = biz();
+        b.put_channel(
+            "acme",
+            "1",
+            "app-renamed",
+            ChannelRec {
+                id: "10".into(),
+                ..Default::default()
+            },
+        );
+        let hit = b
+            .find_channel("app-renamed", Some("acme"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(hit.rec.id, "10");
+        assert_eq!(hit.rec.ty, ChannelType::Login);
+        assert!(b.find_channel("app", Some("acme")).unwrap().is_none());
     }
 
     #[test]

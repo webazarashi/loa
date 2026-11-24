@@ -345,14 +345,21 @@ impl<'a> Runner<'a> {
             }
             Step::ConfirmTarget(c) => {
                 let expected = render(&c.equals, &self.vars)?;
-                let r = ReadStep {
-                    target: c.target.clone(),
-                    into: "_confirm".into(),
-                    attr: None,
-                    pattern: c.pattern.clone(),
-                    optional: false,
+                let actual = if c.url {
+                    let u = self.browser.url().map_err(to_loa_error)?;
+                    let p = c.pattern.as_deref().unwrap_or_default();
+                    extract(p, &u).ok_or_else(|| {
+                        LoaError::ui_changed("URLから対象を読み取れません（confirm_target）")
+                    })?
+                } else {
+                    self.read(&ReadStep {
+                        target: c.target.clone(),
+                        into: "_confirm".into(),
+                        attr: None,
+                        pattern: c.pattern.clone(),
+                        optional: false,
+                    })?
                 };
-                let actual = self.read(&r)?;
                 if crate::util::norm(&actual) != crate::util::norm(&expected) {
                     return Err(LoaError::ui_changed(format!(
                         "画面上の対象（{}）が承認した対象（{}）と一致しないため中止しました",
@@ -1106,6 +1113,9 @@ fn field_js(label: &str) -> String {
   if (found.size !== 1) return {{ count: found.size }};
   const el = [...found][0];
   el.setAttribute('data-loa-field', '{token}');
+  // At the top edge the console's sticky menu covers it and agent-browser refuses the click
+  // (2026-11-24). Centre it first.
+  el.scrollIntoView({{ block: 'center', inline: 'nearest' }});
   return {{ count: 1, sel: '[data-loa-field="{token}"]' }};
 }})()"#
     )
@@ -1161,6 +1171,9 @@ fn near_label_js(label: &str, role: &str, name: &str) -> String {
   if (found.size !== 1) return {{ count: found.size }};
   const el = [...found][0];
   el.setAttribute('data-loa-field', '{token}');
+  // At the top edge the console's sticky menu covers it and agent-browser refuses the click
+  // (2026-11-24). Centre it first.
+  el.scrollIntoView({{ block: 'center', inline: 'nearest' }});
   return {{ count: 1, sel: '[data-loa-field="{token}"]' }};
 }})()"#
     )
@@ -1180,6 +1193,10 @@ fn label_js(label: &str, scope: Option<&str>) -> String {
     if (!el) return null;
     const tag = el.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return el.value;
+    // A box that only wraps a select (the console's kv-select) reads as that select: its text
+    // would list every option.
+    const sels = el.querySelectorAll ? el.querySelectorAll('select') : [];
+    if (sels.length === 1 && norm(el.innerText) === norm(sels[0].innerText)) return sels[0].value;
     const t = norm(el.innerText);
     if (t !== '') return t;
     const inp = el.querySelector && el.querySelector('input,textarea,select');
@@ -1648,6 +1665,41 @@ mod tests {
             .map(String::from)
             .collect();
         assert!(b.calls.contains(&want), "{:?}", b.calls);
+    }
+
+    fn confirm_by_url(current_url: &str) -> (Result<Outputs>, Vec<Cmd>) {
+        let sc = scenario(
+            "oa.enable_messaging_api",
+            "inputs:\n  oa_id: { type: string, required: true }\nsteps:\n  - confirm_target: { url: true, pattern: \"/account/(@[^/?#]+)\", equals: \"{{oa_id}}\" }\n  - click: { role: button, name: \"同意\" }\n",
+        );
+        let mut b = FakeBrowser {
+            current_url: current_url.into(),
+            ..Default::default()
+        };
+        let t = terms();
+        let r = Runner::new(
+            &mut b,
+            &NoHumanGate,
+            &t,
+            OpKind::OaEnableMessagingApi,
+            std::env::temp_dir(),
+        );
+        let mut inputs = Vars::new();
+        inputs.insert("oa_id".into(), "@247peamj".into());
+        let out = r.run(&sc, &inputs);
+        (out, b.calls)
+    }
+
+    #[test]
+    fn confirm_target_reads_the_account_from_the_url() {
+        let (out, calls) = confirm_by_url("https://manager.line.biz/account/@247peamj");
+        assert!(out.is_ok());
+        assert!(calls.iter().any(|c| c.contains(&"click".to_string())));
+
+        let (out, calls) =
+            confirm_by_url("https://manager.line.biz/account/@999other/setting/messaging-api");
+        assert_eq!(out.err().unwrap().code, Code::UiChanged);
+        assert!(calls.iter().all(|c| !c.contains(&"click".to_string())));
     }
 
     #[test]

@@ -1,0 +1,26 @@
+id: channel.reissue_token
+version: 1
+min_loa_version: "0.1.0"
+operation: channel.reissue_token
+status: provisional
+description: チャネルアクセストークン（長期）を再発行する（承認必須。古いトークンは使えなくなる）。トークンはキーチェーンへ
+inputs:
+  channel_id: { type: string, required: true }
+outputs:
+  channel_access_token: { type: secret }
+steps:
+  - goto: "https://developers.line.biz/console/channel/{{channel_id}}/messaging-api"
+  - require_login: true
+  # Messaging API設定タブにはチャネルIDの表示が無いので、URL で確かめる
+  - confirm_target: { url: true, pattern: "/console/channel/(\\d+)/", equals: "{{channel_id}}" }
+  - wait_text: "チャネルアクセストークン（長期）"
+  - click: { role: button, name: "再発行", within: { label: "チャネルアクセストークン（長期）" } }
+  # 確認の箱が出たら、その中の「再発行」を押す（実画面では未確認）
+  - if_exists:
+      role: button
+      name: "再発行"
+      within: { role: dialog }
+      wait_ms: 3000
+      then:
+        - click: { role: button, name: "再発行", within: { role: dialog } }
+  - read_secret: { label: "チャネルアクセストークン（長期）", pattern: "([A-Za-z0-9+/=_-]{100,})", into: channel_access_token }

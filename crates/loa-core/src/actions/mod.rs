@@ -72,6 +72,12 @@ pub enum Command {
         channel: String,
         provider: Option<String>,
     },
+    ChannelIssueToken {
+        channel: String,
+        provider: Option<String>,
+        #[serde(default)]
+        reissue: bool,
+    },
     LiffList {
         channel: String,
         provider: Option<String>,
@@ -312,12 +318,13 @@ impl<'a> Ctx<'a> {
             .with_next("loa channel ls --provider <provider>"))
     }
 
+    /// Channel secrets are keyed by channel id: names are not unique and can change.
     pub fn secret_ref(hit: &ChannelHit, key: &str) -> SecretRef {
-        SecretRef::new(&hit.provider, &hit.name, key)
+        SecretRef::new(&hit.provider, &hit.rec.id, key)
     }
 
     pub fn channel_secret(&self, hit: &ChannelHit) -> Result<Zeroizing<String>> {
-        let r = Self::secret_ref(hit, "channel_secret");
+        let r = Self::secret_ref(hit, KEY_CHANNEL_SECRET);
         self.secrets.get(&r.store_key())?.ok_or_else(|| {
             LoaError::other(format!(
                 "{} のチャネルシークレットが保存されていません",
@@ -325,7 +332,22 @@ impl<'a> Ctx<'a> {
             ))
             .with_next(format!(
                 "loa channel get {} --provider {}",
-                hit.name, hit.provider
+                hit.rec.id, hit.provider
+            ))
+        })
+    }
+
+    /// Long-lived channel access token stored by `loa channel issue-token`.
+    pub fn channel_access_token(&self, hit: &ChannelHit) -> Result<Zeroizing<String>> {
+        let r = Self::secret_ref(hit, KEY_ACCESS_TOKEN);
+        self.secrets.get(&r.store_key())?.ok_or_else(|| {
+            LoaError::other(format!(
+                "{} のチャネルアクセストークン（長期）が保存されていません",
+                hit.name
+            ))
+            .with_next(format!(
+                "loa channel issue-token {} --provider {}",
+                hit.rec.id, hit.provider
             ))
         })
     }
@@ -388,6 +410,11 @@ pub fn execute(ctx: &mut Ctx<'_>, cmd: &Command) -> Result<Envelope> {
         Command::ChannelRm { channel, provider } => {
             channel::remove(ctx, channel, provider.as_deref())?
         }
+        Command::ChannelIssueToken {
+            channel,
+            provider,
+            reissue,
+        } => channel::issue_token(ctx, channel, provider.as_deref(), *reissue)?,
         Command::LiffList { channel, provider } => liff::list(ctx, channel, provider.as_deref())?,
         Command::LiffGet {
             channel,
@@ -425,6 +452,9 @@ pub fn execute(ctx: &mut Ctx<'_>, cmd: &Command) -> Result<Envelope> {
     };
     Ok(ctx.finish(env))
 }
+
+pub const KEY_CHANNEL_SECRET: &str = "channel_secret";
+pub const KEY_ACCESS_TOKEN: &str = "channel_access_token";
 
 /// Seconds to wait for scenarios in tests.
 pub const DEFAULT_WAIT: Duration = Duration::from_secs(15);

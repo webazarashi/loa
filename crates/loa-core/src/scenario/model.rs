@@ -353,11 +353,16 @@ pub struct IfSetStep {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
 pub struct ConfirmStep {
+    /// Element holding the target. Leave empty with `url: true`.
     #[serde(flatten)]
     pub target: Locator,
     pub equals: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pattern: Option<String>,
+    /// Read the target from the current URL with `pattern` (pages that show it nowhere else,
+    /// e.g. a consent page in front of the account).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub url: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]

@@ -194,6 +194,9 @@ pub struct ChannelCreateArgs {
     /// LINEログインのコールバックURL（複数可）
     #[arg(long = "callback-url")]
     pub callback_urls: Vec<String>,
+    /// 友だち追加オプションでリンクするLINE公式アカウント（名前または @ID。LINEログインのみ）
+    #[arg(long = "linked-oa")]
+    pub linked_oa: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -223,12 +226,24 @@ pub enum ChannelCmd {
         email: Option<String>,
         #[arg(long = "callback-url")]
         callback_urls: Vec<String>,
+        /// 友だち追加オプションでリンクするLINE公式アカウント（名前または @ID。LINEログインのみ）
+        #[arg(long = "linked-oa")]
+        linked_oa: Option<String>,
     },
     /// チャネルを削除する（承認必須）
     Rm {
         channel: String,
         #[arg(long)]
         provider: Option<String>,
+    },
+    /// Messaging APIチャネルのチャネルアクセストークン（長期）をキーチェーンへ保存する（未発行なら発行する）
+    IssueToken {
+        channel: String,
+        #[arg(long)]
+        provider: Option<String>,
+        /// 再発行する（承認必須。いまのトークンは使えなくなる）
+        #[arg(long)]
+        reissue: bool,
     },
 }
 
@@ -353,7 +368,7 @@ pub enum EnvCmd {
         provider: Option<String>,
         #[arg(long, default_value = ".env.local")]
         out: String,
-        /// KEY=path（例: LIFF_ID=liff.main.id, LINE_CHANNEL_SECRET=channel.secret）
+        /// KEY=path（例: LIFF_ID=liff.main.id, LINE_CHANNEL_SECRET=channel.secret, LINE_CHANNEL_ACCESS_TOKEN=channel.access_token）
         #[arg(long = "map")]
         maps: Vec<String>,
     },

@@ -78,6 +78,10 @@ pub fn resolve(
                 out.push((m.key.clone(), ctx.channel_secret(&hit)?));
                 continue;
             }
+            ["channel", "access_token"] => {
+                out.push((m.key.clone(), ctx.channel_access_token(&hit)?));
+                continue;
+            }
             ["provider", "id"] => hit.provider_id.clone(),
             ["provider", "name"] => hit.provider.clone(),
             ["liff", name, field] => {
@@ -87,7 +91,7 @@ pub fn resolve(
                     if liff_cache.is_none() {
                         liff_cache = Some(liff::fetch(ctx, &hit)?);
                         if let Some(b) = ctx.resources()?.business_ref(&ctx.business_id)
-                            && let Some(h) = b.find_channel(&hit.name, Some(&hit.provider))?
+                            && let Some(h) = b.find_channel(&hit.key, Some(&hit.provider))?
                         {
                             hit = h;
                         }
@@ -112,12 +116,12 @@ pub fn resolve(
             ["miniapp", stage, "liff_id"] => {
                 hit.rec.miniapp.get(*stage).cloned().ok_or_else(|| {
                     LoaError::usage(format!("ミニアプリの {stage} のLIFF IDが未取得です"))
-                        .with_next(format!("loa miniapp get {}", hit.name))
+                        .with_next(format!("loa miniapp get {}", hit.key))
                 })?
             }
             _ => {
                 return Err(LoaError::usage(format!(
-                    "不明な値です: {}（channel.id / channel.name / channel.secret / provider.id / liff.<name>.id / liff.<name>.url / miniapp.<stage>.liff_id）",
+                    "不明な値です: {}（channel.id / channel.name / channel.secret / channel.access_token / provider.id / liff.<name>.id / liff.<name>.url / miniapp.<stage>.liff_id）",
                     m.path
                 )));
             }

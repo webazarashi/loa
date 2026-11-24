@@ -69,7 +69,7 @@ pub fn set(ctx: &mut Ctx<'_>, key: &str, provider: Option<&str>, url: &str) -> R
         "updated",
         json!({"channel": hit.name, "endpoint": url, "previous": current.endpoint, "active": current.active}),
     )
-    .with_next(format!("loa webhook test --channel {}", hit.name));
+    .with_next(format!("loa webhook test --channel {}", hit.key));
     if !current.active {
         env = env.with_warning(
             "Webhookの利用がオフになっています。公式アカウントの応答設定で Webhook をオンにしてください（loa oa update <oa> --response.mode webhook）",

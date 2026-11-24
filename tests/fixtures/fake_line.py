@@ -25,6 +25,7 @@ STATE = {
     "oas": {},  # @id -> {name, status_message, join_groups, chat, webhook, auto_reply, members: {name: role}, messaging: {channel_id} | None}
     "tokens": {},  # token -> cid
     "terms_text": "LINE開発者契約 本文 第1版",
+    "oam_consent_text": "LINEヤフー株式会社は、サービス改善を目的とし、LINE公式アカウントの各種情報を利用しています。",
     "log": [],
 }
 AUTO_LOGIN_MS = 1200
@@ -38,6 +39,16 @@ def rhex(n=32):
     return "".join(random.choice("0123456789abcdef") for _ in range(n))
 
 
+def long_token():
+    return "".join(random.choice("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/") for _ in range(171)) + "="
+
+
+# Real console (2026-11-24): the custom select shows its value through ::before, which covers the
+# <select> (clicks do not reach it), and the wrapper and the <select> share one id.
+EDIT_SELECT_JS = ("this.hidden=true;const f=this.closest('form');f.querySelector('select').disabled=false;"
+                  "f.querySelectorAll('button[hidden]').forEach(b=>b.hidden=false)")
+
+
 def esc(s):
     return html.escape(str(s or ""), quote=True)
 
@@ -47,7 +58,8 @@ TYPE_LABEL = {"login": "LINEログイン", "miniapp": "LINEミニアプリ", "me
 
 def page(title, body, header=""):
     return f"""<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>{esc(title)}</title>
-<style>body{{font-family:sans-serif;margin:16px}} [hidden]{{display:none!important}} .row{{display:flex;gap:8px;margin:4px 0}}</style>
+<style>body{{font-family:sans-serif;margin:16px}} [hidden]{{display:none!important}} .row{{display:flex;gap:8px;margin:4px 0}}
+.kv-select{{position:relative;display:inline-block;min-width:240px}} .kv-select::before{{content:attr(data-content);position:absolute;inset:0;background:#fff;border:1px solid #888}}</style>
 </head><body>{header}<main>{body}</main>
 <script>
 function edit(id){{document.getElementById(id).hidden=false;}}
@@ -313,14 +325,15 @@ class H(BaseHTTPRequestHandler):
             if not ch:
                 return self.send(404, page("404", "<h1>チャネルがありません</h1>"))
             base = f"/dev/console/channel/{cid}"
-            tabs = f'<nav><a role="tab" href="{base}/basics">チャネル基本設定</a> <a role="tab" href="{base}/line-login">LINEログイン設定</a> <a role="tab" href="{base}/web-app">ウェブアプリ設定</a></nav>'
+            tabs = f'<nav><a role="tab" href="{base}/basics">チャネル基本設定</a> <a role="tab" href="{base}/messaging-api">Messaging API設定</a> <a role="tab" href="{base}/line-login">LINEログイン設定</a> <a role="tab" href="{base}/web-app">ウェブアプリ設定</a></nav>'
             head = f'<h1>{esc(ch["name"])}</h1>{tabs}'
             if tab == "consent" and method == "POST":
                 ch["consent"] = True
                 return self.redirect(f"{base}/basics")
             if tab == "update" and method == "POST":
                 f = self.form()
-                key = {"name": "name", "description": "description", "email": "email", "callback": "callbacks"}[f["field"]]
+                key = {"name": "name", "description": "description", "email": "email", "callback": "callbacks",
+                       "linked_oa": "linked_oa"}[f["field"]]
                 ch[key] = f["value"]
                 back = "line-login" if key == "callbacks" else "basics"
                 return self.redirect(f"{base}/{back}")
@@ -344,7 +357,7 @@ class H(BaseHTTPRequestHandler):
                     kv("チャネル説明", ch["description"], f"{base}/update", "description", True),
                     kv("メールアドレス", ch["email"], f"{base}/update", "email", True),
                     kv("チャネルシークレット", ch["secret"], extra='<button type="button">発行</button>'),
-                ]) + f"""</section>
+                ]) + "</section>" + self.friend_option(ch, base) + f"""
 <section class="tab-section"><h3>多言語対応</h3><table><tr><th>言語</th><th>チャネル名</th><th>チャネル説明</th></tr><tr><td colspan="3">データはありません。</td></tr></table></section>
 <section class="tab-section"><h3>チャネルの削除</h3><button type="button" onclick="document.getElementById('del').hidden=false">削除</button></section>
 <div class="kv-modal" id="del" hidden><form method="post" action="{base}/delete"><header>このチャネルを削除しますか？</header>
@@ -353,6 +366,26 @@ class H(BaseHTTPRequestHandler):
 <div><input type="checkbox" id="delagree" name="agree"><label for="delagree">上記に同意し、このチャネルの永久削除を希望します。</label></div>
 <div role="contentinfo"><button type="button" onclick="document.getElementById('del').hidden=true">キャンセル</button><button type="submit">削除</button></div></form></div>
 <div role="contentinfo"><a href="/dev/console/">規約とポリシー</a></div>"""
+                return self.send(200, page(ch["name"], body))
+            if tab == "messaging-api":
+                if method == "POST":
+                    op = self.form().get("op")
+                    if op == "reissue" or (op == "issue" and not ch.get("access_token")):
+                        ch["access_token"] = long_token()
+                    return self.redirect(f"{base}/messaging-api")
+                # Real console (2026-11-24): an unissued token shows only 発行 in the token row.
+                tok = ch.get("access_token")
+                if tok:
+                    row = f'<span class="token">{esc(tok)}</span><button type="button" onclick="document.getElementById(\'re\').showModal()">再発行</button>'
+                else:
+                    row = '<form method="post"><input type="hidden" name="op" value="issue"><button type="submit">発行</button></form>'
+                basic = next((oid for oid, o in STATE["oas"].items() if (o.get("messaging") or {}).get("channel_id") == cid), "")
+                body = (head + "<h2>Messaging API設定</h2>"
+                        + f'<section class="tab-section"><h3>ボット情報</h3>{kv("ボットのベーシックID", basic)}</section>'
+                        + '<section class="tab-section"><h3>チャネルアクセストークン</h3><div class="kv-field"><label>チャネルアクセストークン（長期） <i></i></label>'
+                        + f'<section><div class="field"><div class="token-row">{row}</div></div></section></div></section>'
+                        + '<dialog id="re" aria-label="チャネルアクセストークンの再発行"><form method="post"><input type="hidden" name="op" value="reissue">'
+                        + '<p>再発行すると、いまのトークンは使えなくなります。</p><button type="submit">再発行</button></form></dialog>')
                 return self.send(200, page(ch["name"], body))
             if tab == "line-login":
                 body = head + kv("コールバックURL", ch["callbacks"], f"{base}/update", "callback", True)
@@ -379,6 +412,30 @@ class H(BaseHTTPRequestHandler):
                 return self.send(200, page(ch["name"], head + secs))
         self.send(404, page("404", "<h1>見つかりません</h1>"))
 
+    def friend_option(self, ch, base):
+        """友だち追加オプション of LINE Login channels: official accounts whose Messaging API channel
+        is in the same provider can be linked."""
+        if ch["type"] != "login":
+            return ""
+        cur = ch.get("linked_oa", "")
+        opts, shown = '<option value="">–</option>', "–"
+        for oid, o in STATE["oas"].items():
+            m = o.get("messaging") or {}
+            if STATE["channels"].get(m.get("channel_id"), {}).get("pid") != ch["pid"]:
+                continue
+            label = f"{oid}/{o['name']}"
+            sel = " selected" if oid == cur else ""
+            if sel:
+                shown = label
+            opts += f'<option value="{esc(oid)}"{sel}>{esc(label)}</option>'
+        return (f'<section class="tab-section"><h3>友だち追加オプション</h3><div class="field-frame" role="group" aria-labelledby="v-4">'
+                f'<div id="v-4" class="label"><label for="v-0">リンクされたLINE公式アカウント <i></i></label></div><div class="content">'
+                f'<form method="post" action="{base}/update"><input type="hidden" name="field" value="linked_oa">'
+                f'<div class="kv-select" id="v-0" data-content="{esc(shown)}"><select id="v-0" name="value" disabled>{opts}</select></div>'
+                f'<div class="dc-operations"><button type="button" onclick="{EDIT_SELECT_JS}">編集</button>'
+                f'<button type="submit" hidden>更新</button><button type="button" hidden onclick="location.reload()">キャンセル</button></div>'
+                f'</form></div></div></section>')
+
     # ------------------------------------------------------------ official account manager
     def oam(self, method, path, q):
         parts = [urllib.parse.unquote(p) for p in path.split("/") if p]
@@ -389,9 +446,20 @@ class H(BaseHTTPRequestHandler):
             return self.send(404, page("404", "<h1>なし</h1>"))
         oid = parts[1]
         o = STATE["oas"][oid]
-        header = f'<header><span>{esc(o["name"])}</span> <span>{esc(oid)}</span></header>'
+        # Real OAM (2026-11-24): no <header> element; the account name is a button next to the @ID.
+        header = f'<div class="account"><button type="button">{esc(o["name"])}</button><span>{esc(oid)}</span></div>'
         base = f"/oam/account/{oid}/setting"
         rest = parts[2:]
+        # A new account first shows the information-use consent, at the account root.
+        if not o.get("consented", True):
+            if rest == ["consent"] and method == "POST":
+                o["consented"] = True
+                return self.redirect(f"/oam/account/{oid}/")
+            if rest:
+                return self.redirect(f"/oam/account/{oid}")
+            body = (f'<h1>情報利用に関する同意について</h1><p>{esc(STATE["oam_consent_text"])}</p>'
+                    f'<form method="post" action="/oam/account/{oid}/consent"><button type="submit">同意</button></form>')
+            return self.send(200, page("同意", body, '<div role="banner"><a href="/oam/">LINE Official Account Manager</a></div>'))
         if rest == [] :
             return self.send(200, page(o["name"], f"<h1>{esc(o['name'])}</h1>", header))
         if rest == ["setting"]:
@@ -435,17 +503,26 @@ class H(BaseHTTPRequestHandler):
                                           "secret": rhex(), "callbacks": "", "consent": True, "liff": {}, "webhook": "", "miniapp": {}}
                 o["messaging"] = {"channel_id": cid}
                 return self.redirect(f"{base}/messaging-api")
+            # Real OAM (2026-11-24): a bare <label> ステータス, then Channel ID / Channel secret rows.
+            def status(v):
+                return f'<div class="form-group"><label>ステータス</label><div><div class="form-control-plaintext">{v}</div></div></div>'
+            def info(label, v):
+                return f'<div class="d-flex"><div class="w-20">{label}</div><div class="flex-1">{esc(v)}</div><div><button type="button">コピー</button></div></div>'
             if o.get("messaging"):
-                ch = STATE["channels"][o["messaging"]["channel_id"]]
-                body = "<h1>Messaging API</h1>" + group("Channel ID", o["messaging"]["channel_id"]) + group("Channel secret", ch["secret"])
+                cid = o["messaging"]["channel_id"]
+                ch = STATE["channels"][cid]
+                body = ("<h1>Messaging API</h1><section>" + status("利用中")
+                        + f'<div class="form-group"><label>Channel情報</label><div>{info("Channel ID", cid)}{info("Channel secret", ch["secret"])}</div></div></section>')
                 return self.send(200, page("Messaging API", body, header))
             radios = "".join(f'<div><input type="radio" name="provider" id="p{pid}" value="{pid}"><label for="p{pid}">{esc(p["name"])}</label></div>' for pid, p in STATE["providers"].items())
-            body = f"""<h1>Messaging API</h1><button type="button" onclick="document.getElementById('ma').showModal()">Messaging APIを利用する</button>
+            # After 同意する comes a plain box (no role=dialog) for optional privacy policy / terms URLs.
+            body = f"""<h1>Messaging API</h1><section>{status("未利用")}<button type="button" onclick="document.getElementById('ma').showModal()">Messaging APIを利用する</button></section>
 <dialog id="ma" aria-label="Messaging APIの利用"><form method="post">{radios}
 <div><input type="radio" name="provider" id="pnew" value="__new__"><label for="pnew">プロバイダーを作成</label></div>
 <div><label for="np">プロバイダー名</label><input id="np" name="new_provider"></div>
-<button type="button" onclick="document.getElementById('okb').hidden=false">同意する</button>
-<button type="submit" id="okb" hidden>OK</button></form></dialog>"""
+<button type="button" onclick="document.getElementById('pp').hidden=false">同意する</button>
+<div id="pp" hidden><h2>プライバシーポリシーと利用規約</h2><label for="ppu">プライバシーポリシー</label><input id="ppu" placeholder="https://">
+<button type="submit">OK</button><button type="button">キャンセル</button></div></form></dialog>"""
             return self.send(200, page("Messaging API", body, header))
         if rest == ["setting", "user"]:
             if method == "POST":
@@ -466,23 +543,45 @@ class H(BaseHTTPRequestHandler):
 
     # ------------------------------------------------------------ entry form
     def entry(self, method, path, q):
+        # Real entry form (2026-11-24): 確認 leads to a confirmation page whose table shows the
+        # account's email (an "@" before anything is created); 完了 may raise a reCAPTCHA image
+        # challenge (flag `recaptcha`); the complete page shows the basic ID in a table cell.
+        form = "/entry/form/entry/unverified"
         if path == "/form/entry/unverified":
             if method == "POST":
                 f = self.form()
-                oid = "@" + rhex(7)
-                STATE["oas"][oid] = {"name": f["name"], "status_message": "", "join_groups": True, "chat": True,
-                                     "webhook": False, "auto_reply": True, "members": {}, "messaging": None}
-                return self.redirect(f"/entry/form/entry/done?id={urllib.parse.quote(oid)}")
+                STATE["entry_draft"] = {"name": f["name"], "company": f.get("company", "")}
+                return self.redirect(f"{form}/confirmation")
             body = """<h1>LINE公式アカウントの作成</h1><form method="post">
 <div><label for="an">アカウント名</label><input id="an" name="name"></div>
 <div><label for="co">会社・事業者名</label><input id="co" name="company"></div>
 <div><label for="c1">大業種</label><select id="c1" name="c1"><option>小売</option><option>飲食</option></select></div>
 <div><label for="c2">小業種</label><select id="c2" name="c2"><option>その他</option></select></div>
-<button type="button" onclick="document.getElementById('fin').hidden=false">確認</button>
-<button type="submit" id="fin" hidden>完了</button></form>"""
+<button type="submit">確認</button></form>"""
             return self.send(200, page("作成", body))
-        if path == "/form/entry/done":
-            return self.send(200, page("完了", "<h1>作成しました</h1>" + group("ベーシックID", q.get("id", ""))))
+        if path == "/form/entry/unverified/confirmation":
+            d = STATE.get("entry_draft") or {}
+            challenge = ""
+            if method == "POST":
+                if STATE.get("flags", {}).get("recaptcha") and q.get("solved") != "1":
+                    challenge = (f'<div role="dialog" aria-label="reCAPTCHA による確認は 2 分間有効です"><p>自転車の画像をすべて選択してください</p>'
+                                 f'<form method="post" action="{form}/confirmation?solved=1"><button type="submit">確認</button></form></div>')
+                else:
+                    oid = "@" + rhex(7)
+                    STATE["oas"][oid] = {"name": d.get("name", ""), "status_message": "", "join_groups": True, "chat": True,
+                                         "webhook": False, "auto_reply": True, "members": {}, "messaging": None,
+                                         "consented": False}
+                    return self.redirect(f"{form}/complete?id={urllib.parse.quote(oid)}")
+            body = (f'<h1>入力内容の確認</h1><h2>アカウント情報</h2><table><tr><th>アカウント名</th><td>{esc(d.get("name"))}</td></tr>'
+                    f'<tr><th>メールアドレス</th><td>owner@example.com</td></tr><tr><th>会社・事業者名</th><td>{esc(d.get("company"))}</td></tr></table>'
+                    f'<form method="post"><button type="button">キャンセル</button><button type="submit">完了</button></form>{challenge}')
+            return self.send(200, page("確認", body))
+        if path == "/form/entry/unverified/complete":
+            oid = q.get("id", "")
+            o = STATE["oas"].get(oid, {})
+            body = (f'<h1>LINE公式アカウントが作成されました。</h1><table><tr><th>アカウント名</th><td>{esc(o.get("name"))}</td></tr>'
+                    f'<tr><th>メールアドレス</th><td>owner@example.com</td></tr><tr><th>ID</th><td>{esc(oid)}</td></tr></table>')
+            return self.send(200, page("完了", body))
         self.send(404, "")
 
     # ------------------------------------------------------------ LINE API

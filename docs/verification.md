@@ -95,6 +95,10 @@ loa oa update "loa テスト" --members.add test --members.role operator   # 招
 ```
 
 - `oa create` は、入力後の確認画面とSMS認証を `human` ステップで待つ。案内に従ってブラウザで操作する
+- `oa create` の「完了」のあとに画像認証（reCAPTCHA）が出たら、それも人が解く。loa は完了画面（`/form/entry/unverified/complete`）の「LINE公式アカウントが作成されました。」を待ってからベーシックIDを読む
+- 新しい公式アカウントを初めて開くと「情報利用に関する同意について」が出る。`oa enable-messaging-api` はこれを規約の承認として扱う（承認ダイアログが出る）
+- `oa enable-messaging-api` は、すでに「利用中」なら有効化の操作も承認も飛ばし、Channel ID とシークレットを読むだけにする
+- Messaging API チャネルのトークンは `loa channel issue-token <チャネル>` で発行・保存する（未発行なら発行、発行済みなら読むだけ）。再発行は `--reissue`（承認あり。いまのトークンは使えなくなる）
 - `--json` で試す場合は、人の出番で終了コード 10〜12 が返るので `loa --json wait <task>` で続ける
 
 ## 5. 承認ダイアログと規約同意
@@ -109,8 +113,10 @@ loa oa update "loa テスト" --members.add test --members.role operator   # 招
 
 | 項目 | 状況 |
 |---|---|
-| 実画面で確認済みのシナリオ（`verified`） | provider.list・provider.create・channel.list・channel.create.login・channel.get・channel.update.basic・channel.update.callback・channel.delete・oa.list・session.login・session.whoami（2026-11-21〜24）。LIFF の作成・更新・削除（API）も selftest で通った |
-| 未確認のシナリオ（`provisional`） | 公式アカウントの取得・作成・更新・Messaging API の有効化、ミニアプリ、provider.update |
+| 実画面で確認済みのシナリオ（`verified`） | provider.list・provider.create・channel.list・channel.create.login・channel.get・channel.update.basic・channel.update.callback・channel.delete・oa.list・session.login・session.whoami（2026-11-21〜24）。LIFF の作成・更新・削除（API）も selftest で通った。2026-11-24 にデモ用の公式アカウント（@247peamj）とそのチャネルで oa.get.messaging_api（利用中なら有効化を飛ばす経路）・channel.issue_token・channel.update.linked_oa、名前を読むようにした channel.get（v2）も通った |
+| 未確認のシナリオ（`provisional`） | 公式アカウントの取得・作成・更新・Messaging API の有効化、channel.reissue_token、ミニアプリ、provider.update。oa.create（v2：画像認証と完了画面）と oa.enable_messaging_api（v2：URL での確認と情報利用の同意）は、2026-11-24 の失敗記録の画面構造と偽コンソールでだけ確かめた |
+| トークンの「発行」 | 2026-11-24 に一度、押した「発行」はコンソール側で通ったのに画面が書き換わらず、`channel issue-token` が `UI_CHANGED` で止まった。もう一度流すと発行済みのトークンを読んでキーチェーンに入れる（再発行はしない）。失敗時の次のコマンドにも出る |
+| 項目の「編集」ボタン | 画面の上端にあると、固定のメニューに隠れてクリックが届かない。loa は押す前に画面の中央へスクロールする。2026-11-24 に一度、`channel update --linked-oa` で「編集」が開かずに止まった（原因は未特定。流し直すと通った） |
 | macOS キーチェーンの許可ダイアログ | 署名なしやチーム ID の無い自己署名では、作り直すたびに許可を求められる。手元では `scripts/dev-sign.sh`（Apple Development 証明書）で署名すれば出ない。配布版は更新のたびに1回許可が要る（有料の Developer ID で署名すれば不要）。署名なしの loa をバックグラウンドの端末（Orca など）から起動すると、許可ダイアログが表示されないことがある |
 | Windows | 型検査と lint まで（`cargo clippy --target x86_64-pc-windows-gnu --no-default-features`）。`ring` の C コードは mingw がないため未コンパイル。実機では未確認 |
 | CI・Release ワークフロー | 未実行（push していないため） |

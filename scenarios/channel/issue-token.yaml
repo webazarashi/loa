@@ -1,0 +1,23 @@
+id: channel.issue_token
+version: 1
+min_loa_version: "0.1.0"
+operation: channel.issue_token
+status: verified
+description: Messaging APIチャネルのチャネルアクセストークン（長期）を読む。未発行なら発行する（再発行はしない）。トークンはキーチェーンへ
+inputs:
+  channel_id: { type: string, required: true }
+outputs:
+  channel_access_token: { type: secret }
+steps:
+  - goto: "https://developers.line.biz/console/channel/{{channel_id}}/messaging-api"
+  - require_login: true
+  # 2026-11-24 確認: Messaging API設定タブの「チャネルアクセストークン」の欄。未発行なら「発行」だけがある
+  - wait_text: "チャネルアクセストークン（長期）"
+  - if_exists:
+      role: button
+      name: "発行"
+      within: { label: "チャネルアクセストークン（長期）" }
+      then:
+        - click: { role: button, name: "発行", within: { label: "チャネルアクセストークン（長期）" } }
+        - wait_for: { role: button, name: "再発行", within: { label: "チャネルアクセストークン（長期）" } }
+  - read_secret: { label: "チャネルアクセストークン（長期）", pattern: "([A-Za-z0-9+/=_-]{100,})", into: channel_access_token }
