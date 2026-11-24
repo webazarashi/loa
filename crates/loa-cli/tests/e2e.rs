@@ -30,11 +30,12 @@ fn repo_root() -> PathBuf {
         .unwrap()
 }
 
-fn start_fake() -> Fake {
+/// `auto_login_ms < 0`: the login page waits for a click (the test logs in through `Env::human`).
+fn start_fake(auto_login_ms: i64) -> Fake {
     let script = repo_root().join("tests/fixtures/fake_line.py");
     let mut child = Command::new("python3")
         .arg(script)
-        .args(["--port", "0", "--auto-login-ms", "5000"])
+        .args(["--port", "0", "--auto-login-ms", &auto_login_ms.to_string()])
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
@@ -61,7 +62,11 @@ struct Env {
 
 impl Env {
     fn new(tag: &str) -> Env {
-        let fake = start_fake();
+        Env::with_auto_login(tag, 5000)
+    }
+
+    fn with_auto_login(tag: &str, auto_login_ms: i64) -> Env {
+        let fake = start_fake(auto_login_ms);
         let home = std::env::temp_dir().join(format!("loa-e2e-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&home);
         std::fs::create_dir_all(&home).unwrap();
@@ -182,6 +187,20 @@ impl Env {
         serde_json::from_slice(&out.stdout).unwrap()
     }
 
+    /// The OA update scenarios end on the save click and do not wait for the page to confirm it
+    /// (the confirmation on the real screen is not known yet), so the form post can land just
+    /// after loa exits. Give the fake a moment before reading.
+    fn state_until(&self, done: impl Fn(&Value) -> bool) -> Value {
+        for _ in 0..50 {
+            let st = self.state();
+            if done(&st) {
+                return st;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        self.state()
+    }
+
     fn post(&self, path: &str, body: &str) {
         let st = Command::new("curl")
             .args([
@@ -257,15 +276,25 @@ fn assert_code(r: &(i32, Value, String), code: i32) {
 #[test]
 #[ignore = "launches a browser; run with --ignored"]
 fn console_flow() {
-    let env = Env::new("flow");
+    // No timed auto-login: on a slow runner it could log in before loa first looks at the page.
+    let env = Env::with_auto_login("flow", -1);
 
     // 1. first browser command meets the login page: --json returns LOGIN_REQUIRED + task,
-    //    `loa wait` follows the same task to the end
+    //    the person logs in, `loa wait` follows the same task to the end
     let r = env.run(&["provider", "create", "--name", "loa-e2e"]);
     assert_code(&r, 10);
     assert_eq!(r.1["code"], "LOGIN_REQUIRED");
     assert!(r.1["next"][0].as_str().unwrap().starts_with("loa wait"));
     let task = r.1["task"].as_str().unwrap().to_string();
+    env.human(&[
+        "find",
+        "role",
+        "link",
+        "click",
+        "--name",
+        "ログイン",
+        "--exact",
+    ]);
     let r = env.run(&["wait", &task, "--timeout", "120"]);
     assert_code(&r, 0);
     let pid = r.1["data"]["id"].as_str().unwrap().to_string();
@@ -705,7 +734,9 @@ fn official_account_flow() {
         "false",
     ]);
     assert_code(&r, 0);
-    let st = env.state();
+    let st = env.state_until(|st| {
+        st["oas"][&oid]["status_message"] == "hello" && st["oas"][&oid]["join_groups"] == false
+    });
     assert_eq!(st["oas"][&oid]["status_message"], "hello");
     assert_eq!(st["oas"][&oid]["join_groups"], false);
 
@@ -717,7 +748,7 @@ fn official_account_flow() {
     env.set_approve("approve");
     let r = env.run_done(&["oa", "update", "E2E Shop", "--response.mode", "webhook"]);
     assert_code(&r, 0);
-    let st = env.state();
+    let st = env.state_until(|st| st["oas"][&oid]["webhook"] == true);
     assert_eq!(st["oas"][&oid]["webhook"], true);
     assert_eq!(st["oas"][&oid]["chat"], false);
 
